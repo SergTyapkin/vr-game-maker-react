@@ -1,0 +1,24 @@
+ARG NODE_RELEASE=22
+FROM node:${NODE_RELEASE}
+
+ENV PNPM_VERSION=10.10.0
+
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+
+WORKDIR /app
+
+ARG GITLAB_NPM_REGISTRY_ACCESS_TOKEN
+COPY package.json pnpm-lock.yaml* ./
+RUN pnpm config set store-dir /pnpm-store && \
+    pnpm config set @widgets:registry https://git.sberrobots.ru/api/v4/groups/3503/-/packages/npm/ && \
+    pnpm config set //git.sberrobots.ru/api/v4/groups/3503/-/packages/npm/:_authToken ${GITLAB_NPM_REGISTRY_ACCESS_TOKEN} && \
+    pnpm config set //git.sberrobots.ru/api/v4/projects/2364/packages/npm/:_authToken ${GITLAB_NPM_REGISTRY_ACCESS_TOKEN} && \
+    pnpm config set //git.sberrobots.ru/api/v4/packages/npm/:_authToken ${GITLAB_NPM_REGISTRY_ACCESS_TOKEN} && \
+    pnpm install
+
+COPY . .
+
+RUN mkdir -p /app/node_modules /app/.next /pnpm-store
+
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["pnpm run dev"]

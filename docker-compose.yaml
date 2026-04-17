@@ -1,0 +1,36 @@
+services:
+  webxr-dev:
+    container_name: webxr-dev
+    env_file:
+      - ".env"
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.dev
+      args:
+        - NODE_RELEASE
+        - GITLAB_NPM_REGISTRY_ACCESS_TOKEN
+    ports:
+      - "8000:8000"
+
+    restart: unless-stopped
+
+
+  webxr:
+    container_name: webxr
+    env_file:
+      - ".env"
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+      args:
+        - GITLAB_NPM_REGISTRY_ACCESS_TOKEN
+    ports:
+      - "443:443"
+    environment:
+      - NODE_ENV=production
+
+
+volumes:
+  app_node_modules:
+  app_pnpm_store:
+  app_next_cache:

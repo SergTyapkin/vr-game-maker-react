@@ -1,0 +1,18 @@
+/* components/ui/Card.module.css */
+.card {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-lg);
+    padding: 2rem;
+    height: 100%;
+    transition: all var(--transition-slow) var(--ease-out);
+}
+
+.card.hover {
+    cursor: pointer;
+}
+
+.card.hover:hover {
+    box-shadow: var(--shadow-2xl);
+    transform: translateY(-4px);
+}

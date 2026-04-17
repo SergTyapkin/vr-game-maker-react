@@ -1,0 +1,8 @@
+.env
+.next/
+.pnpm-store/
+.python-version
+.vscode/
+node_modules/
+out
+certificates
