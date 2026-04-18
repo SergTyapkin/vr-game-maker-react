@@ -1,0 +1,872 @@
+/* app/editor/scenes/Scenes.module.css */
+
+/* Основной контейнер списка сцен */
+.container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary);
+    overflow-y: auto;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--bg-secondary);
+}
+
+.title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.createButton {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: var(--color-primary);
+    color: white;
+    border-radius: var(--radius-lg);
+    font-weight: 500;
+    transition: all var(--transition-base);
+}
+
+.createButton:hover {
+    background: var(--color-primary-dark);
+    transform: translateY(-1px);
+}
+
+/* Диалог создания сцены */
+.dialogOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.dialog {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    min-width: 400px;
+    box-shadow: var(--shadow-2xl);
+}
+
+.dialog h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+}
+
+.dialog input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+}
+
+.dialog input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.dialogActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.dialogActions button {
+    padding: 0.625rem 1.25rem;
+    border-radius: var(--radius-md);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    transition: all var(--transition-base);
+}
+
+.dialogActions button:first-child {
+    background: var(--bg-gradient-end);
+    color: var(--text-secondary);
+}
+
+.dialogActions button:first-child:hover {
+    background: var(--border-medium);
+    color: var(--text-primary);
+}
+
+.dialogActions button:last-child {
+    background: var(--color-primary);
+    color: white;
+}
+
+.dialogActions button:last-child:hover {
+    background: var(--color-primary-dark);
+}
+
+/* Список сцен */
+.scenesList {
+    flex: 1;
+    padding: 2rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    align-content: start;
+}
+
+.loading,
+.empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 4rem;
+    color: var(--text-tertiary);
+}
+
+.sceneCard {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: all var(--transition-base);
+}
+
+.sceneCard:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--color-primary);
+}
+
+.scenePreview {
+    aspect-ratio: 16 / 9;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.scenePreview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.scenePlaceholder {
+    font-size: 3rem;
+    opacity: 0.5;
+}
+
+.sceneInfo {
+    padding: 1rem;
+}
+
+.sceneInfo h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.sceneInfo p {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.sceneMeta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-bottom: 1rem;
+}
+
+.sceneActions {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0 1rem 1rem 1rem;
+}
+
+.sceneActions button {
+    flex: 1;
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all var(--transition-base);
+}
+
+.sceneActions button:first-child {
+    background: var(--color-primary);
+    color: white;
+}
+
+.sceneActions button:first-child:hover {
+    background: var(--color-primary-dark);
+}
+
+.sceneActions button:last-child {
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-secondary);
+}
+
+.sceneActions button:last-child:hover {
+    background: var(--color-error);
+    border-color: var(--color-error);
+    color: white;
+}
+
+/* Редактор сцены */
+.editorContainer {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary);
+    overflow: hidden;
+}
+
+/* Верхняя панель инструментов */
+.toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-light);
+    flex-shrink: 0;
+}
+
+.toolbarLeft,
+.toolbarCenter,
+.toolbarRight {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.toolbar button {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    transition: all var(--transition-base);
+    white-space: nowrap;
+}
+
+.toolbar button:hover {
+    background: var(--bg-gradient-end);
+    border-color: var(--border-medium);
+    color: var(--text-primary);
+}
+
+.toolbar button.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+}
+
+.sceneName {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 0 0.5rem;
+}
+
+.saveButton {
+    background: var(--color-success) !important;
+    border-color: var(--color-success) !important;
+    color: white !important;
+}
+
+.saveButton:hover:not(:disabled) {
+    background: #059669 !important;
+}
+
+.saveButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.gizmoControls {
+    display: flex;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.gizmoButton {
+    width: 36px;
+    height: 36px;
+    padding: 0 !important;
+    justify-content: center !important;
+    border: none !important;
+    border-radius: 0 !important;
+    font-size: 1.25rem !important;
+}
+
+.gizmoButton:not(:last-child) {
+    border-right: 1px solid var(--border-light) !important;
+}
+
+.snapControls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.snapButton {
+    width: 36px;
+    height: 36px;
+    padding: 0 !important;
+    justify-content: center !important;
+    font-size: 1.25rem !important;
+}
+
+.snapControls input {
+    width: 60px;
+    height: 36px;
+    padding: 0 0.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.snapControls input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.viewModeButton {
+    min-width: 80px;
+    justify-content: center !important;
+}
+
+/* Основная рабочая область */
+.mainArea {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+/* Левая панель - Иерархия */
+.leftPanel {
+    width: 280px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.panelHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.panelHeader h3 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.addButtons {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.addButtons button {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    color: var(--text-secondary);
+    transition: all var(--transition-base);
+}
+
+.addButtons button:hover {
+    background: var(--bg-gradient-end);
+    border-color: var(--border-medium);
+    color: var(--text-primary);
+}
+
+.hierarchy {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+}
+
+.emptyHierarchy {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 0.875rem;
+}
+
+.emptyHierarchy p:first-child {
+    margin-bottom: 0.5rem;
+}
+
+.hierarchyItem {
+    user-select: none;
+}
+
+.hierarchyRow {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    transition: background var(--transition-base);
+    position: relative;
+}
+
+.hierarchyRow:hover {
+    background: var(--bg-gradient-end);
+}
+
+.hierarchyRow.selected {
+    background: var(--color-primary);
+    color: white;
+}
+
+.expandButton {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 0.625rem;
+    cursor: pointer;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.expandButton:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.objectIcon {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.objectName {
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 0.125rem 0.25rem;
+    font-size: 0.875rem;
+    color: inherit;
+    outline: none;
+    min-width: 0;
+}
+
+.hierarchyRow.selected .objectName:focus {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-sm);
+}
+
+.objectActions {
+    display: flex;
+    gap: 0.125rem;
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.hierarchyRow:hover .objectActions {
+    opacity: 1;
+}
+
+.visibilityButton,
+.lockButton {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    font-size: 0.875rem;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity var(--transition-base);
+    flex-shrink: 0;
+}
+
+.visibilityButton:hover,
+.lockButton:hover {
+    opacity: 1;
+}
+
+.hierarchyChildren {
+    margin-left: 0;
+}
+
+/* Центральная область - Вьюпорт */
+.viewport {
+    flex: 1;
+    position: relative;
+    background: #1a1a2e;
+    overflow: hidden;
+}
+
+.viewportLoading {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    font-size: 1rem;
+}
+
+.viewportOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 1rem;
+}
+
+.viewportInfo {
+    display: flex;
+    gap: 1rem;
+    pointer-events: none;
+}
+
+.viewportInfo span {
+    padding: 0.25rem 0.75rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    color: white;
+}
+
+.viewportControls {
+    align-self: flex-end;
+    display: flex;
+    gap: 0.5rem;
+    pointer-events: auto;
+}
+
+.viewportControls button {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    font-size: 1.25rem;
+    color: white;
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.viewportControls button:hover {
+    background: rgba(0, 0, 0, 0.8);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Правая панель - Инспектор */
+.rightPanel {
+    width: 320px;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.inspector {
+    height: 100%;
+    overflow-y: auto;
+}
+
+.inspectorEmpty {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-tertiary);
+}
+
+.inspectorHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-light);
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+    z-index: 1;
+}
+
+.inspectorHeader h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.deleteObjectButton {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.deleteObjectButton:hover {
+    background: var(--color-error);
+    border-color: var(--color-error);
+    color: white;
+}
+
+.inspectorSection {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.inspectorSection h4 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 1rem;
+}
+
+.transformRow {
+    margin-bottom: 0.75rem;
+}
+
+.transformRow label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-bottom: 0.25rem;
+}
+
+.vectorInput {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.vectorInput input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.375rem 0.25rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.vectorInput input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.vectorInput input[type="number"]::-webkit-inner-spin-button,
+.vectorInput input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.propertyRow {
+    margin-bottom: 0.75rem;
+}
+
+.propertyRow label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-bottom: 0.25rem;
+}
+
+.propertyRow select,
+.propertyRow input[type="text"],
+.propertyRow input[type="number"] {
+    width: 100%;
+    padding: 0.375rem 0.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    color: var(--text-primary);
+}
+
+.propertyRow select:focus,
+.propertyRow input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.propertyRow input[type="color"] {
+    height: 32px;
+    padding: 0.125rem;
+    cursor: pointer;
+}
+
+.addComponentButton {
+    width: 100%;
+    padding: 0.5rem;
+    background: transparent;
+    border: 1px dashed var(--border-medium);
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.addComponentButton:hover {
+    background: var(--bg-gradient-end);
+    border-color: var(--color-primary);
+    color: var(--text-primary);
+}
+
+.componentItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    margin-top: 0.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;
+}
+
+.componentItem span {
+    color: var(--text-primary);
+}
+
+.removeComponentButton {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    font-size: 1rem;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: color var(--transition-base);
+}
+
+.removeComponentButton:hover {
+    color: var(--color-error);
+}
+
+/* Адаптивность */
+@media (max-width: 1024px) {
+    .toolbar {
+        flex-wrap: wrap;
+    }
+
+    .leftPanel {
+        width: 250px;
+    }
+
+    .rightPanel {
+        width: 280px;
+    }
+}
+
+@media (max-width: 768px) {
+    .mainArea {
+        flex-direction: column;
+    }
+
+    .leftPanel {
+        width: 100%;
+        max-height: 250px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-light);
+    }
+
+    .rightPanel {
+        width: 100%;
+        max-height: 300px;
+        border-left: none;
+        border-top: 1px solid var(--border-light);
+    }
+
+    .viewport {
+        order: -1;
+        min-height: 300px;
+    }
+
+    .toolbarLeft,
+    .toolbarCenter,
+    .toolbarRight {
+        flex-wrap: wrap;
+    }
+
+    .scenesList {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+    }
+}

@@ -1,0 +1,287 @@
+/* app/editor/textures/Textures.module.css */
+.container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--bg-secondary);
+}
+
+.title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.uploadButton {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: var(--color-primary);
+    color: white;
+    border-radius: var(--radius-lg);
+    font-weight: 500;
+    transition: all var(--transition-base);
+}
+
+.uploadButton:hover:not(:disabled) {
+    background: var(--color-primary-dark);
+    transform: translateY(-1px);
+}
+
+.uploadButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.fileInput {
+    display: none;
+}
+
+.error {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1rem 2rem;
+    padding: 1rem;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--color-error);
+    border-radius: var(--radius-lg);
+    color: var(--color-error);
+}
+
+.error button {
+    margin-left: auto;
+    font-size: 1.5rem;
+    opacity: 0.7;
+}
+
+.error button:hover {
+    opacity: 1;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    padding: 1.5rem 2rem;
+    gap: 1.5rem;
+}
+
+.grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    align-content: start;
+    overflow-y: auto;
+}
+
+.loading,
+.empty {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem;
+    color: var(--text-tertiary);
+    text-align: center;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-light);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.textureCard {
+    position: relative;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.textureCard:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.textureCard.selected {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+.texturePreview {
+    aspect-ratio: 1;
+    background: var(--bg-gradient-end);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.texturePreview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.textureInfo {
+    padding: 0.75rem;
+}
+
+.textureName {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0.25rem;
+}
+
+.textureMeta {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-bottom: 0.25rem;
+}
+
+.textureDate {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+}
+
+.deleteButton {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    border-radius: var(--radius-sm);
+    color: white;
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.textureCard:hover .deleteButton {
+    opacity: 1;
+}
+
+.deleteButton:hover {
+    background: var(--color-error);
+}
+
+.detailPanel {
+    width: 320px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.detailHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.detailHeader h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.detailHeader button {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    font-size: 1.25rem;
+    color: var(--text-secondary);
+}
+
+.detailHeader button:hover {
+    background: var(--bg-gradient-end);
+}
+
+.detailPreview {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.detailPreview img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: contain;
+    background: var(--bg-gradient-end);
+    border-radius: var(--radius-md);
+}
+
+.detailInfo {
+    padding: 1rem;
+}
+
+.detailRow {
+    display: flex;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+}
+
+.detailLabel {
+    width: 100px;
+    color: var(--text-tertiary);
+}
+
+.detailValue {
+    flex: 1;
+    color: var(--text-primary);
+}
+
+.detailValue input {
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    background: var(--bg-gradient-end);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}

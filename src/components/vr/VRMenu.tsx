@@ -187,7 +187,7 @@ export function VRMenu({
   // Если меню прикреплено к голове
   if (attachToHead) {
     return (
-      <GroupHeadTracked distance={distance} smoothFactor={0.05}>
+      <GroupHeadTracked distance={distance} smoothFactor={0.2}>
         {menuContent}
       </GroupHeadTracked>
     );
@@ -199,7 +199,7 @@ export function VRMenu({
       <GroupControllerTracked
         controller={attachToController}
         offset={[0, 0.05, -0.15]}
-        smoothFactor={0.1}
+        smoothFactor={0.2}
       >
         <GroupFacedInCamera mode="spherical">
           {menuContent}
@@ -210,7 +210,7 @@ export function VRMenu({
 
   // Обычное меню, повернутое к камере
   return (
-    <GroupFacedInCamera mode="spherical" smoothFactor={0.05}>
+    <GroupFacedInCamera mode="spherical" smoothFactor={0.2}>
       {menuContent}
     </GroupFacedInCamera>
   );

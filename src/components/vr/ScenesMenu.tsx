@@ -1,54 +1,219 @@
 // components/vr/ScenesMenu.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { VRMenu } from './VRMenu';
+import { useRouter } from 'next/navigation';
+
+interface SceneData {
+  id: string;
+  name: string;
+  description?: string;
+  metadata: {
+    createdAt: string;
+    updatedAt: string;
+    version: number;
+    thumbnail?: string;
+  };
+}
 
 interface ScenesMenuProps {
   onBack: () => void;
   onSelectScene: (sceneId: string) => void;
+  currentSceneId?: string | null;
 }
 
-// Моковые данные сцен
-const mockScenes = [
-  { id: '1', name: 'Scene 1', preview: null },
-  { id: '2', name: 'Scene 2', preview: null },
-  { id: '3', name: 'Scene 3', preview: null },
-];
+export function ScenesMenu({ onBack, onSelectScene, currentSceneId }: ScenesMenuProps) {
+  const router = useRouter();
+  const [scenes, setScenes] = useState<SceneData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newSceneName, setNewSceneName] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-export function ScenesMenu({ onBack, onSelectScene }: ScenesMenuProps) {
-  const [scenes] = useState(mockScenes);
+  useEffect(() => {
+    loadScenes();
+  }, []);
 
-  const buttons = [
-    ...scenes.map(scene => ({
-      id: `scene-${scene.id}`,
-      label: scene.name,
-      variant: 'secondary' as const,
-      onClick: () => onSelectScene(scene.id),
-    })),
-    {
-      id: 'create-new',
-      label: '+ Create scene',
-      variant: 'primary' as const,
-      onClick: () => {
-        console.log('Create new scene');
-        // Здесь будет создание новой сцены
+  const loadScenes = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/scenes');
+      const data = await response.json();
+
+      if (response.ok) {
+        setScenes(data.scenes || []);
+      } else {
+        setError(data.error);
+      }
+    } catch (err) {
+      setError('Failed to load scenes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateScene = useCallback(async () => {
+    // if (!newSceneName.trim()) return;
+    if (!newSceneName.trim()) {
+      setNewSceneName(`scene-${String(Math.random()).slice(2, 8)}`);
+      console.warn('No scene name provided. Generated scene name:', newSceneName)
+    }
+
+    try {
+      const response = await fetch('/api/scenes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newSceneName }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setScenes(prev => [...prev, data.scene]);
+        setIsCreating(false);
+        setNewSceneName('');
+        onSelectScene(data.scene.id);
+      } else {
+        setError(data.error);
+      }
+    } catch (err) {
+      setError('Failed to create scene');
+    }
+  }, [newSceneName, onSelectScene]);
+
+  const handleDeleteScene = useCallback(async (sceneId: string, sceneName: string) => {
+    // В VR сложно показывать confirm, поэтому просто удаляем
+    try {
+      const response = await fetch(`/api/scenes/${sceneId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setScenes(prev => prev.filter(s => s.id !== sceneId));
+      }
+    } catch (err) {
+      setError('Failed to delete scene');
+    }
+  }, []);
+
+  const handleEditInBrowser = useCallback((sceneId: string) => {
+    // Выходим из VR и переходим в браузерный редактор
+    router.push(`/editor/scenes?open=${sceneId}`);
+  }, [router]);
+
+  // Формируем кнопки меню
+  const getMenuButtons = () => {
+    // if (isCreating) {
+    //   return [
+    //     {
+    //       id: 'create-confirm',
+    //       label: 'Create',
+    //       variant: 'primary' as const,
+    //       onClick: handleCreateScene,
+    //       disabled: !newSceneName.trim(),
+    //     },
+    //     {
+    //       id: 'create-cancel',
+    //       label: 'Cancel',
+    //       variant: 'secondary' as const,
+    //       onClick: () => {
+    //         setIsCreating(false);
+    //         setNewSceneName('');
+    //       },
+    //     },
+    //   ];
+    // }
+
+    const buttons = [
+      {
+        id: 'back',
+        label: '<- Back',
+        variant: 'secondary' as const,
+        onClick: onBack,
       },
-    },
-    {
-      id: 'back',
-      label: '<- Back',
-      variant: 'secondary' as const,
-      onClick: onBack,
-    },
-  ];
+      {
+        id: 'create',
+        label: '+ Create new scene',
+        variant: 'primary' as const,
+        // onClick: () => setIsCreating(true),
+        onClick: handleCreateScene,
+      },
+    ];
+
+    if (loading) {
+      buttons.push({
+        id: 'loading',
+        label: 'Loading...',
+        variant: 'secondary' as const,
+        onClick: () => {},
+        disabled: true,
+      });
+    } else {
+      // Добавляем существующие сцены
+      scenes.forEach(scene => {
+        const isCurrent = scene.id === currentSceneId;
+
+        buttons.push({
+          id: `scene-${scene.id}`,
+          label: `${scene.name} ${isCurrent ? '✓' : ''}`,
+          variant: isCurrent ? 'primary' as const : 'secondary' as const,
+          onClick: () => onSelectScene(scene.id),
+        });
+
+        // Добавляем кнопки действий для сцены
+        buttons.push({
+          id: `edit-${scene.id}`,
+          label: '  ✏️ In browser',
+          variant: 'secondary' as const,
+          onClick: () => handleEditInBrowser(scene.id),
+        });
+
+        if (!isCurrent) {
+          buttons.push({
+            id: `delete-${scene.id}`,
+            label: '  🗑️ Delete',
+            variant: 'danger' as const,
+            onClick: () => handleDeleteScene(scene.id, scene.name),
+          });
+        }
+      });
+    }
+
+    return buttons;
+  };
+
+  const title = isCreating ? 'New scene' : 'Scenes';
 
   return (
-    <VRMenu
-      title="Scenes"
-      buttons={buttons}
-      attachToHead={true}
-      distance={2}
-    />
+    <group>
+      <VRMenu
+        title={title}
+        buttons={getMenuButtons()}
+        attachToHead={true}
+        distance={2}
+      />
+
+      {/*{isCreating && (*/}
+      {/*  // Здесь можно добавить 3D поле ввода для названия сцены*/}
+      {/*  // Пока используем простое текстовое поле через HTML*/}
+      {/*  <HtmlInput*/}
+      {/*    value={newSceneName}*/}
+      {/*    onChange={setNewSceneName}*/}
+      {/*    placeholder="Название сцены"*/}
+      {/*    onSubmit={handleCreateScene}*/}
+      {/*    onCancel={() => {*/}
+      {/*      setIsCreating(false);*/}
+      {/*      setNewSceneName('');*/}
+      {/*    }}*/}
+      {/*  />*/}
+      {/*)}*/}
+    </group>
   );
+}
+
+// Компонент для HTML ввода в VR (опционально)
+function HtmlInput({ value, onChange, placeholder, onSubmit, onCancel }: any) {
+  // Можно реализовать ввод через HTML overlay
+  return null;
 }

@@ -1,15 +1,15 @@
 // app/vr/page.tsx
 'use client';
 
+import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import styles from './page.module.css';
 
-// Динамический импорт для избежания SSR проблем с Three.js
 const VRScene = dynamic(() => import('@/components/vr/VRScene'), {
   ssr: false,
   loading: () => (
     <div className={styles.loading}>
-      <div className={styles.loadingSpinner}></div>
+      <div className={styles.spinner} />
       <p>Загрузка VR окружения...</p>
     </div>
   ),
@@ -18,7 +18,9 @@ const VRScene = dynamic(() => import('@/components/vr/VRScene'), {
 export default function VRPage() {
   return (
     <div className={styles.container}>
-      <VRScene />
+      <Suspense fallback={<div className={styles.loading}>Загрузка...</div>}>
+        <VRScene />
+      </Suspense>
     </div>
   );
 }

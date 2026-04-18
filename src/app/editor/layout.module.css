@@ -1,0 +1,112 @@
+/* app/editor/EditorLayout.module.css */
+.layout {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    background: var(--bg-primary);
+}
+
+.sidebar {
+    width: 320px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebarHeader {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.logo svg {
+    color: var(--color-primary);
+}
+
+.navigation {
+    flex: 1;
+    padding: 1rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.navItem {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.875rem 1rem;
+    border-radius: var(--radius-lg);
+    color: var(--text-secondary);
+    transition: all var(--transition-base) var(--ease-out);
+}
+
+.navItem:hover {
+    background: var(--bg-gradient-end);
+    color: var(--text-primary);
+}
+
+.navItem.active {
+    background: var(--color-primary);
+    color: white;
+}
+
+.navIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+}
+
+.navContent {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.navLabel {
+    font-weight: 500;
+    font-size: 0.9375rem;
+}
+
+.navDescription {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.sidebarFooter {
+    padding: 1.5rem;
+    border-top: 1px solid var(--border-light);
+}
+
+.backButton {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-lg);
+    color: var(--text-secondary);
+    transition: all var(--transition-base) var(--ease-out);
+}
+
+.backButton:hover {
+    background: var(--bg-gradient-end);
+    color: var(--text-primary);
+}
+
+.main {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}

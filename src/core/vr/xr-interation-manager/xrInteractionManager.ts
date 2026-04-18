@@ -5,8 +5,8 @@ import {ControllerState} from "@/core/vr/xr-tracking/store/XRStore";
 import {InteractiveObject} from "@/core/vr/xr-tracking/hooks/useInteractive";
 import {CONTROLLER_RAY_DIR_VECTOR, CONTROLLER_RAY_START_POS} from "@/core/vr/constants";
 
-class XRInteractionManagerClass {
-  private static instance: XRInteractionManagerClass;
+export class XRInteractionManager {
+  private static instance: XRInteractionManager;
 
   private interactiveObjects: Map<string, InteractiveObject> = new Map();
   private lastHoveredId: string | null = null;
@@ -22,11 +22,11 @@ class XRInteractionManagerClass {
 
   private constructor() {}
 
-  static getInstance(): XRInteractionManagerClass {
-    if (!XRInteractionManagerClass.instance) {
-      XRInteractionManagerClass.instance = new XRInteractionManagerClass();
+  static getInstance(): XRInteractionManager {
+    if (!XRInteractionManager.instance) {
+      XRInteractionManager.instance = new XRInteractionManager();
     }
-    return XRInteractionManagerClass.instance;
+    return XRInteractionManager.instance;
   }
 
   // Инициализация
@@ -45,13 +45,13 @@ class XRInteractionManagerClass {
   register(id: string, obj: InteractiveObject): () => void {
     const existingObj = this.interactiveObjects.get(id);
     if (existingObj) {
-      console.warn(`[XRInteractionManagerClass] Object already registered: ${id}`, existingObj);
+      console.warn(`[XRInteractionManager] Object already registered: ${id}`, existingObj);
       return () => {};
     }
     this.interactiveObjects.set(id, obj);
-    console.log(`[XRInteractionManagerClass] Registered: ${id}`, obj);
+    console.log(`[XRInteractionManager] Registered: ${id}`, obj);
     return () => {
-      console.log(`[XRInteractionManagerClass] Unregistered: ${id}`, obj);
+      console.log(`[XRInteractionManager] Unregistered: ${id}`, obj);
       this.interactiveObjects.delete(id);
     };
   }
@@ -300,4 +300,4 @@ class XRInteractionManagerClass {
   }
 }
 
-export const XrInteractionManager = XRInteractionManagerClass.getInstance();
+export const XrInteractionManager = XRInteractionManager.getInstance();
