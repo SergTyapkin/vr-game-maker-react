@@ -68,23 +68,23 @@ export default function EditorPage() {
         ))}
       </div>
 
-      <div className={styles.recentSection}>
-        <h2 className={styles.sectionTitle}>Недавние изменения</h2>
-        <div className={styles.recentList}>
-          <div className={styles.recentItem}>
-            <span className={styles.recentTime}>5 мин назад</span>
-            <span className={styles.recentAction}>Изменен файл DoorController.js</span>
-          </div>
-          <div className={styles.recentItem}>
-            <span className={styles.recentTime}>1 час назад</span>
-            <span className={styles.recentAction}>Загружена текстура wood_diffuse.png</span>
-          </div>
-          <div className={styles.recentItem}>
-            <span className={styles.recentTime}>3 часа назад</span>
-            <span className={styles.recentAction}>Создана сцена "Test Level"</span>
-          </div>
-        </div>
-      </div>
+      {/*<div className={styles.recentSection}>*/}
+      {/*  <h2 className={styles.sectionTitle}>Недавние изменения</h2>*/}
+      {/*  <div className={styles.recentList}>*/}
+      {/*    <div className={styles.recentItem}>*/}
+      {/*      <span className={styles.recentTime}>5 мин назад</span>*/}
+      {/*      <span className={styles.recentAction}>Изменен файл DoorController.js</span>*/}
+      {/*    </div>*/}
+      {/*    <div className={styles.recentItem}>*/}
+      {/*      <span className={styles.recentTime}>1 час назад</span>*/}
+      {/*      <span className={styles.recentAction}>Загружена текстура wood_diffuse.png</span>*/}
+      {/*    </div>*/}
+      {/*    <div className={styles.recentItem}>*/}
+      {/*      <span className={styles.recentTime}>3 часа назад</span>*/}
+      {/*      <span className={styles.recentAction}>Создана сцена "Test Level"</span>*/}
+      {/*    </div>*/}
+      {/*  </div>*/}
+      {/*</div>*/}
     </div>
   );
 }

@@ -2,7 +2,14 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import styles from './page.module.css';
+
+// Динамический импорт Monaco Editor (только на клиенте)
+const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
+  ssr: false,
+  loading: () => <div className={styles.editorLoading}>Загрузка редактора...</div>,
+});
 
 interface ScriptFile {
   path: string;
@@ -18,6 +25,52 @@ interface ScriptDirectory {
   children: (ScriptFile | ScriptDirectory)[];
 }
 
+// Определение языка для Monaco по расширению файла
+function getLanguageFromFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase();
+
+  switch (ext) {
+    case 'js':
+      return 'javascript';
+    case 'ts':
+      return 'typescript';
+    case 'json':
+      return 'json';
+    case 'html':
+      return 'html';
+    case 'css':
+      return 'css';
+    case 'py':
+      return 'python';
+    case 'glsl':
+      return 'glsl';
+    default:
+      return 'javascript';
+  }
+}
+
+// Настройки темы Monaco
+const editorOptions = {
+  fontSize: 14,
+  lineHeight: 21,
+  fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace",
+  minimap: { enabled: true },
+  scrollBeyondLastLine: false,
+  automaticLayout: true,
+  tabSize: 2,
+  wordWrap: 'on' as const,
+  formatOnPaste: true,
+  formatOnType: true,
+  suggestOnTriggerCharacters: true,
+  quickSuggestions: true,
+  bracketPairColorization: { enabled: true },
+  renderWhitespace: 'selection' as const,
+  guides: {
+    bracketPairs: true,
+    indentation: true,
+  },
+};
+
 export default function CodeEditorPage() {
   const [fileTree, setFileTree] = useState<(ScriptFile | ScriptDirectory)[]>([]);
   const [selectedFile, setSelectedFile] = useState<ScriptFile | null>(null);
@@ -28,9 +81,13 @@ export default function CodeEditorPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hotReloadStatus, setHotReloadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isCreatingFile, setIsCreatingFile] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemParent, setNewItemParent] = useState<string>('/');
 
   const wsRef = useRef<WebSocket | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<any>(null);
 
   // Загрузка дерева файлов
   const loadFileTree = useCallback(async () => {
@@ -55,9 +112,8 @@ export default function CodeEditorPage() {
   useEffect(() => {
     loadFileTree();
 
-    // Подключаем WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
+    const ws = new WebSocket(`${protocol}//${window.location.hostname}:8000/api/ws/scenes`);
 
     ws.onopen = () => {
       console.log('[WebSocket] Connected');
@@ -68,7 +124,6 @@ export default function CodeEditorPage() {
         const data = JSON.parse(event.data);
 
         if (data.type === 'file-changed') {
-          // Файл изменен извне
           console.log('[WebSocket] File changed:', data.file);
 
           if (selectedFile && selectedFile.path === '/' + data.file) {
@@ -77,7 +132,6 @@ export default function CodeEditorPage() {
             setIsModified(false);
           }
 
-          // Обновляем дерево файлов
           loadFileTree();
         } else if (data.type === 'hot-reload') {
           setHotReloadStatus('success');
@@ -118,15 +172,33 @@ export default function CodeEditorPage() {
         setSelectedFile(data.file);
         setCode(data.file.content);
         setIsModified(false);
+        setError(null);
       }
     } catch (err) {
       setError('Failed to load file');
     }
   };
 
-  const handleCodeChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setCode(e.target.value);
-    setIsModified(true);
+  const handleEditorChange = (value: string | undefined) => {
+    if (value !== undefined) {
+      setCode(value);
+      setIsModified(true);
+    }
+  };
+
+  const handleEditorDidMount = (editor: any) => {
+    editorRef.current = editor;
+
+    // Добавляем команды
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+      () => handleSave()
+    );
+
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyR,
+      () => handleHotReload()
+    );
   };
 
   const handleSave = async () => {
@@ -150,9 +222,7 @@ export default function CodeEditorPage() {
       if (response.ok) {
         setSelectedFile(data.file);
         setIsModified(false);
-
-        // Обновляем дерево файлов
-        loadFileTree();
+        await loadFileTree();
       } else {
         setError(data.error);
       }
@@ -168,14 +238,12 @@ export default function CodeEditorPage() {
 
     setHotReloadStatus('loading');
 
-    // Отправляем через WebSocket
     wsRef.current.send(JSON.stringify({
       type: 'hot-reload',
       file: selectedFile.path,
       content: code,
     }));
 
-    // Сохраняем файл перед hot reload
     handleSave();
 
     setTimeout(() => {
@@ -186,15 +254,113 @@ export default function CodeEditorPage() {
     }, 1000);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      if (e.key === 's') {
-        e.preventDefault();
-        handleSave();
-      } else if (e.key === 'r') {
-        e.preventDefault();
-        handleHotReload();
+  // app/editor/code/page.tsx
+  const handleCreateFile = async () => {
+    if (!newItemName.trim()) return;
+
+    const path = newItemParent === '/' ? `/${newItemName}` : `${newItemParent}/${newItemName}`;
+
+    try {
+      const response = await fetch('/api/scripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path,
+          content: '// New file',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Обновляем дерево файлов
+        await loadFileTree();
+
+        // Закрываем модальное окно
+        setIsCreatingFile(false);
+        setNewItemName('');
+
+        // Опционально: автоматически открываем созданный файл
+        if (data.file) {
+          // Добавляем родительскую папку в expanded
+          if (newItemParent !== '/') {
+            setExpandedFolders(prev => {
+              const next = new Set(prev);
+              next.add(newItemParent);
+              return next;
+            });
+          }
+
+          // Выбираем созданный файл
+          setTimeout(() => selectFile(data.file), 100);
+        }
+      } else {
+        setError(data.error || 'Failed to create file');
       }
+    } catch (err) {
+      setError('Failed to create file');
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newItemName.trim()) return;
+
+    const path = newItemParent === '/' ? `/${newItemName}` : `${newItemParent}/${newItemName}`;
+
+    try {
+      const response = await fetch('/api/scripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: `${path}/.gitkeep`,
+          content: '',
+        }),
+      });
+
+      if (response.ok) {
+        // Обновляем дерево файлов
+        await loadFileTree();
+
+        // Добавляем новую папку в expanded
+        setExpandedFolders(prev => {
+          const next = new Set(prev);
+          next.add(path);
+          return next;
+        });
+
+        setIsCreatingFolder(false);
+        setNewItemName('');
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to create folder');
+      }
+    } catch (err) {
+      setError('Failed to create folder');
+    }
+  };
+
+  const handleDeleteFile = async (file: ScriptFile) => {
+    if (!confirm(`Delete ${file.name}?`)) return;
+
+    try {
+      const response = await fetch('/api/scripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: file.path,
+          action: 'delete',
+        }),
+      });
+
+      if (response.ok) {
+        if (selectedFile?.path === file.path) {
+          setSelectedFile(null);
+          setCode('');
+        }
+        await loadFileTree();
+      }
+    } catch (err) {
+      setError('Failed to delete file');
     }
   };
 
@@ -206,22 +372,68 @@ export default function CodeEditorPage() {
             selectedFile?.path === node.path ? styles.selected : ''
           }`}
           style={{ paddingLeft: `${level * 20 + 8}px` }}
-          onClick={() => {
-            if ('children' in node) {
-              toggleFolder(node.path);
-            } else {
-              selectFile(node);
-            }
-          }}
         >
-          <span className={styles.treeIcon}>
+          <span
+            className={styles.treeIcon}
+            onClick={() => {
+              if ('children' in node) {
+                toggleFolder(node.path);
+              }
+            }}
+          >
             {'children' in node ? (
               expandedFolders.has(node.path) ? '📂' : '📁'
             ) : (
               '📄'
             )}
           </span>
-          <span className={styles.treeName}>{node.name}</span>
+          <span
+            className={styles.treeName}
+            onClick={() => {
+              if ('children' in node) {
+                toggleFolder(node.path);
+              } else {
+                selectFile(node);
+              }
+            }}
+          >
+            {node.name}
+          </span>
+          {'children' in node && (
+            <div className={styles.treeActions}>
+              <button
+                className={styles.treeAction}
+                onClick={() => {
+                  setNewItemParent(node.path);
+                  setIsCreatingFile(true);
+                }}
+                title="New file"
+              >
+                📄+
+              </button>
+              <button
+                className={styles.treeAction}
+                onClick={() => {
+                  setNewItemParent(node.path);
+                  setIsCreatingFolder(true);
+                }}
+                title="New folder"
+              >
+                📁+
+              </button>
+            </div>
+          )}
+          {!('children' in node) && (
+            <div className={styles.treeActions}>
+              <button
+                className={styles.treeAction}
+                onClick={() => handleDeleteFile(node)}
+                title="Delete"
+              >
+                🗑️
+              </button>
+            </div>
+          )}
         </div>
         {'children' in node && expandedFolders.has(node.path) && (
           <div className={styles.treeChildren}>
@@ -232,18 +444,80 @@ export default function CodeEditorPage() {
     ));
   };
 
+  // Модальное окно для создания файла/папки
+  const renderCreateModal = () => {
+    if (!isCreatingFile && !isCreatingFolder) return null;
+
+    return (
+      <div className={styles.modalOverlay} onClick={() => {
+        setIsCreatingFile(false);
+        setIsCreatingFolder(false);
+        setNewItemName('');
+      }}>
+        <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+          <h3>{isCreatingFile ? 'Создать файл' : 'Создать папку'}</h3>
+          <input
+            type="text"
+            placeholder={isCreatingFile ? 'example.js' : 'new-folder'}
+            value={newItemName}
+            onChange={(e) => setNewItemName(e.target.value)}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                isCreatingFile ? handleCreateFile() : handleCreateFolder();
+              } else if (e.key === 'Escape') {
+                setIsCreatingFile(false);
+                setIsCreatingFolder(false);
+                setNewItemName('');
+              }
+            }}
+          />
+          <div className={styles.modalActions}>
+            <button onClick={() => {
+              setIsCreatingFile(false);
+              setIsCreatingFolder(false);
+              setNewItemName('');
+            }}>Отмена</button>
+            <button onClick={isCreatingFile ? handleCreateFile : handleCreateFolder}>
+              Создать
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Определяем язык для текущего файла
+  const currentLanguage = selectedFile
+    ? getLanguageFromFilename(selectedFile.name)
+    : 'javascript';
+
   return (
     <div className={styles.container}>
       <div className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
           <h3>Файлы проекта</h3>
           <div className={styles.sidebarActions}>
-            <button className={styles.iconButton} title="Создать файл">
+            <button
+              className={styles.iconButton}
+              title="Создать файл"
+              onClick={() => {
+                setNewItemParent('/');
+                setIsCreatingFile(true);
+              }}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path d="M12 4v16m8-8H4" strokeWidth="2" />
               </svg>
             </button>
-            <button className={styles.iconButton} title="Создать папку">
+            <button
+              className={styles.iconButton}
+              title="Создать папку"
+              onClick={() => {
+                setNewItemParent('/');
+                setIsCreatingFolder(true);
+              }}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeWidth="2" />
                 <path d="M12 11v6M9 14h6" strokeWidth="2" />
@@ -284,6 +558,7 @@ export default function CodeEditorPage() {
               <div className={styles.fileInfo}>
                 <span className={styles.fileName}>{selectedFile.name}</span>
                 {isModified && <span className={styles.modifiedBadge}>●</span>}
+                <span className={styles.fileLanguage}>{currentLanguage}</span>
               </div>
               <div className={styles.editorActions}>
                 <button
@@ -295,7 +570,7 @@ export default function CodeEditorPage() {
                     <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" strokeWidth="2" />
                     <path d="M17 21v-4H7v4M12 7v6m-3-3h6" strokeWidth="2" />
                   </svg>
-                  {saving ? 'Сохранение...' : 'Сохранить (Ctrl+S)'}
+                  {saving ? 'Сохранение...' : 'Сохранить'}
                 </button>
                 <button
                   className={`${styles.actionButton} ${styles.hotReload} ${
@@ -310,19 +585,21 @@ export default function CodeEditorPage() {
                   </svg>
                   {hotReloadStatus === 'loading' ? 'Загрузка...' :
                     hotReloadStatus === 'success' ? 'Готово!' :
-                      'Hot Reload (Ctrl+R)'}
+                      'Hot Reload'}
                 </button>
               </div>
             </div>
-            <textarea
-              ref={textareaRef}
-              className={styles.codeEditor}
-              value={code}
-              onChange={handleCodeChange}
-              onKeyDown={handleKeyDown}
-              spellCheck={false}
-              placeholder="// Напишите ваш код здесь..."
-            />
+            <div className={styles.monacoContainer}>
+              <MonacoEditor
+                height="100%"
+                language={currentLanguage}
+                value={code}
+                onChange={handleEditorChange}
+                onMount={handleEditorDidMount}
+                theme="vs-dark"
+                options={editorOptions}
+              />
+            </div>
           </>
         ) : (
           <div className={styles.emptyState}>
@@ -335,6 +612,8 @@ export default function CodeEditorPage() {
           </div>
         )}
       </div>
+
+      {renderCreateModal()}
     </div>
   );
 }

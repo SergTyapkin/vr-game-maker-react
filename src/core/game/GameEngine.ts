@@ -33,6 +33,27 @@ export interface GameEvent {
   timestamp: number;
 }
 
+// Типы для рантайма компонентов
+interface ComponentRuntime {
+  id: string;
+  scriptName: string;
+  objectId: string;
+  object: THREE.Object3D;
+  state: Record<string, any>;
+  enabled: boolean;
+  module: any;
+  instance: any;
+  instanceId?: string;
+  component?: ComponentInstance;
+  update?: (deltaTime: number) => void;
+  fixedUpdate?: (fixedDeltaTime: number) => void;
+  lateUpdate?: (deltaTime: number) => void;
+  onEnable?: () => void;
+  onDisable?: () => void;
+  onDestroy?: () => void;
+  onHotReload?: (oldState: any) => void;
+}
+
 export class GameEngine extends EventEmitter {
   private static instance: GameEngine;
 
@@ -62,6 +83,7 @@ export class GameEngine extends EventEmitter {
   // Компоненты и объекты
   private activeComponents: Map<string, ComponentRuntime> = new Map();
   private objectComponents: Map<string, Set<string>> = new Map();
+  private componentInstances: Map<string, { instanceId: string; component: ComponentInstance }> = new Map();
 
   // События
   private eventQueue: GameEvent[] = [];
@@ -73,20 +95,16 @@ export class GameEngine extends EventEmitter {
   // Физика (упрощенная)
   private gravity = -9.8;
   private groundY = 0;
+  private physicsObjects: Map<string, {
+    velocity: THREE.Vector3;
+    mass: number;
+    useGravity: boolean;
+  }> = new Map();
 
   private constructor() {
     super();
     this.sceneManager = SceneManager.getInstance();
     this.scriptEngine = ScriptEngine.getInstance();
-
-    // Регистрируем API для скриптов
-    this.scriptEngine.registerAPI('game', this.createGameAPI());
-    this.scriptEngine.registerAPI('THREE', THREE);
-
-    // Подписываемся на события скриптов
-    this.scriptEngine.onScriptEvent('*', (event: string, data: any) => {
-      this.emitGameEvent(`script:${event}`, data);
-    });
 
     this.setupScriptEngine();
   }
@@ -100,50 +118,63 @@ export class GameEngine extends EventEmitter {
 
   // ==================== Инициализация ====================
 
-  private setupScriptEngine() {
-    // Регистрируем API для скриптов
-    this.scriptEngine.registerAPI('game', {
+  private createGameAPI() {
+    const self = this;
+    return {
       // Управление игрой
-      loadScene: (sceneId: string) => this.loadScene(sceneId),
-      getCurrentScene: () => this.gameState.currentSceneId,
+      loadScene: (sceneId: string) => self.loadScene(sceneId),
+      getCurrentScene: () => self.gameState.currentSceneId,
 
       // Время
-      getTime: () => this.gameState.elapsedTime,
-      getDeltaTime: () => this.gameState.deltaTime,
+      getTime: () => self.gameState.elapsedTime,
+      getDeltaTime: () => self.gameState.deltaTime,
 
       // Игрок
-      getPlayer: () => this.player,
-      setPlayerPosition: (pos: THREE.Vector3) => {
-        if (this.player) {
-          this.player.position.copy(pos);
-          this.player.object.position.copy(pos);
-        }
-      },
+      getPlayer: () => self.player,
+      setPlayerPosition: (pos: THREE.Vector3) => self.setPlayerPosition(pos),
+      movePlayer: (direction: THREE.Vector3, speed?: number) => self.movePlayer(direction, speed),
+      rotatePlayer: (yaw: number) => self.rotatePlayer(yaw),
+      jumpPlayer: (force?: number) => self.jumpPlayer(force),
 
       // События
-      emit: (eventType: string, data?: any) => this.emitGameEvent(eventType, data),
-      on: (eventType: string, callback: Function) => this.onGameEvent(eventType, callback),
-      off: (eventType: string, callback: Function) => this.offGameEvent(eventType, callback),
+      emit: (eventType: string, data?: any) => self.emitGameEvent(eventType, data),
+      on: (eventType: string, callback: Function) => self.onGameEvent(eventType, callback),
+      off: (eventType: string, callback: Function) => self.offGameEvent(eventType, callback),
 
       // Объекты
-      findObject: (nameOrId: string) => this.findObject(nameOrId),
-      instantiate: (prefabId: string, position?: THREE.Vector3) => this.instantiate(prefabId, position),
-      destroy: (objectId: string) => this.destroyObject(objectId),
+      findObject: (nameOrId: string) => self.findObject(nameOrId),
+      instantiate: (prefabId: string, position?: THREE.Vector3) => self.instantiate(prefabId, position),
+      destroy: (objectId: string) => self.destroyObject(objectId),
 
       // Физика
-      addForce: (objectId: string, force: THREE.Vector3) => this.addForce(objectId, force),
-      setVelocity: (objectId: string, velocity: THREE.Vector3) => this.setVelocity(objectId, velocity),
+      addForce: (objectId: string, force: THREE.Vector3) => self.addForce(objectId, force),
+      setVelocity: (objectId: string, velocity: THREE.Vector3) => self.setVelocity(objectId, velocity),
 
       // Утилиты
       wait: (seconds: number) => new Promise(resolve => setTimeout(resolve, seconds * 1000)),
       lerp: THREE.MathUtils.lerp,
       random: Math.random,
-    });
 
+      // Состояние игры
+      isPlaying: () => self.gameState.isPlaying,
+      isPaused: () => self.gameState.isPaused,
+      pause: () => self.pauseGame(),
+      resume: () => self.resumeGame(),
+    };
+  }
+
+  private setupScriptEngine() {
+    // Регистрируем API для скриптов
+    this.scriptEngine.registerAPI('game', this.createGameAPI());
     this.scriptEngine.registerAPI('THREE', THREE);
 
+    // Подписываемся на события скриптов
+    this.scriptEngine.onScriptEvent('*', (event: string, data: any) => {
+      this.emitGameEvent(`script:${event}`, data);
+    });
+
     // Подписываемся на hot reload
-    this.sceneManager.on('hot-reload', ({ file, content }) => {
+    this.sceneManager.on('hot-reload', ({ file, content }: { file: string; content: string }) => {
       this.handleHotReload(file, content);
     });
   }
@@ -263,8 +294,8 @@ export class GameEngine extends EventEmitter {
       system(deltaTime);
     }
 
-    // Обновляем все компоненты
-    this.updateComponents(deltaTime);
+    // Обновляем все компоненты через ScriptEngine
+    this.scriptEngine.updateInstances(deltaTime, this.gameState.elapsedTime);
 
     // Fixed Update (физика)
     const fixedDeltaTime = 1 / 60;
@@ -273,7 +304,7 @@ export class GameEngine extends EventEmitter {
       for (const system of this.fixedUpdateSystems) {
         system(fixedDeltaTime);
       }
-      this.fixedUpdateComponents(fixedDeltaTime);
+      this.scriptEngine.fixedUpdateInstances(fixedDeltaTime);
       accumulator -= fixedDeltaTime;
     }
 
@@ -284,7 +315,7 @@ export class GameEngine extends EventEmitter {
     for (const system of this.lateUpdateSystems) {
       system(deltaTime);
     }
-    this.lateUpdateComponents(deltaTime);
+    this.scriptEngine.lateUpdateInstances(deltaTime);
   }
 
   // ==================== Управление сценами ====================
@@ -381,7 +412,13 @@ export class GameEngine extends EventEmitter {
     this.player.isMoving = this.player.velocity.length() > 0.1;
   }
 
-  // Управление игроком
+  setPlayerPosition(pos: THREE.Vector3) {
+    if (!this.player) return;
+
+    this.player.position.copy(pos);
+    this.player.object.position.copy(pos);
+  }
+
   movePlayer(direction: THREE.Vector3, speed: number = 5) {
     if (!this.player) return;
 
@@ -419,10 +456,13 @@ export class GameEngine extends EventEmitter {
   }
 
   private async initializeComponent(objectId: string, object: AnySceneObject, component: ComponentInstance) {
+    const threeObject = this.sceneManager.getThreeObjectById(objectId);
+    if (!threeObject) return;
+
     // Используем ScriptEngine для создания инстанса
     const instanceId = this.scriptEngine.createInstance(
       component.scriptName,
-      this.sceneManager.getThreeObjectById(objectId),
+      threeObject,
       component.state
     );
 
@@ -436,164 +476,22 @@ export class GameEngine extends EventEmitter {
     }
   }
 
-  private updateComponents(deltaTime: number) {
-    // Делегируем обновление ScriptEngine
-    this.scriptEngine.updateInstances(deltaTime, this.gameState.elapsedTime);
-  }
-
-  private fixedUpdateComponents(fixedDeltaTime: number) {
-    this.scriptEngine.fixedUpdateInstances(fixedDeltaTime);
-  }
-
-  private lateUpdateComponents(deltaTime: number) {
-    this.scriptEngine.lateUpdateInstances(deltaTime);
-  }
-
-  private async handleHotReload(file: string, content: string) {
-    const scriptName = file.replace(/\.js$/, '');
-    await this.scriptEngine.reloadScript(scriptName, content);
-  }
-
-  private createScriptContext(runtime: ComponentRuntime) {
-    const self = this;
-
-    return {
-      // Состояние компонента
-      state: runtime.state,
-
-      // Объект к которому прикреплен компонент
-      object: runtime.object,
-
-      // События
-      events: {
-        on: (event: string, callback: Function) => {
-          self.onGameEvent(event, callback);
-        },
-        emit: (event: string, data?: any) => {
-          self.emitGameEvent(event, { ...data, source: runtime.objectId });
-        },
-      },
-
-      // Время
-      get deltaTime() { return self.gameState.deltaTime; },
-      get time() { return self.gameState.elapsedTime; },
-
-      // THREE
-      THREE,
-
-      // API игры
-      game: this.scriptEngine.getAPI('game'),
-
-      // Специфичные для компонента методы
-      getComponent: <T>(componentType: string): T | null => {
-        const components = self.objectComponents.get(runtime.objectId);
-        if (!components) return null;
-
-        for (const compId of components) {
-          const key = `${runtime.objectId}:${compId}`;
-          const comp = self.activeComponents.get(key);
-          if (comp?.scriptName === componentType) {
-            return comp.instance as T;
-          }
-        }
-        return null;
-      },
-
-      getComponents: <T>(componentType?: string): T[] => {
-        const components = self.objectComponents.get(runtime.objectId);
-        if (!components) return [];
-
-        const result: T[] = [];
-        for (const compId of components) {
-          const key = `${runtime.objectId}:${compId}`;
-          const comp = self.activeComponents.get(key);
-          if (!componentType || comp?.scriptName === componentType) {
-            result.push(comp?.instance as T);
-          }
-        }
-        return result;
-      },
-
-      // Трансформация
-      get position() { return runtime.object.position; },
-      get rotation() { return runtime.object.rotation; },
-      get scale() { return runtime.object.scale; },
-
-      setPosition: (x: number, y: number, z: number) => {
-        runtime.object.position.set(x, y, z);
-      },
-
-      setRotation: (x: number, y: number, z: number) => {
-        runtime.object.rotation.set(x, y, z);
-      },
-
-      // Утилиты
-      destroy: () => {
-        self.destroyComponent(runtime.objectId, runtime.id);
-      },
-
-      instantiate: (prefabId: string, position?: THREE.Vector3) => {
-        return self.instantiate(prefabId, position);
-      },
-    };
-  }
-
-  private updateComponents(deltaTime: number) {
-    for (const [key, runtime] of this.activeComponents) {
-      if (!runtime.enabled) continue;
-
-      try {
-        runtime.update?.(deltaTime);
-      } catch (error) {
-        console.error(`[GameEngine] Error in update of ${runtime.scriptName}:`, error);
-      }
-    }
-  }
-
-  private fixedUpdateComponents(fixedDeltaTime: number) {
-    for (const [key, runtime] of this.activeComponents) {
-      if (!runtime.enabled) continue;
-
-      try {
-        runtime.fixedUpdate?.(fixedDeltaTime);
-      } catch (error) {
-        console.error(`[GameEngine] Error in fixedUpdate of ${runtime.scriptName}:`, error);
-      }
-    }
-  }
-
-  private lateUpdateComponents(deltaTime: number) {
-    for (const [key, runtime] of this.activeComponents) {
-      if (!runtime.enabled) continue;
-
-      try {
-        runtime.lateUpdate?.(deltaTime);
-      } catch (error) {
-        console.error(`[GameEngine] Error in lateUpdate of ${runtime.scriptName}:`, error);
-      }
-    }
-  }
-
   private cleanupComponents() {
-    for (const [key, runtime] of this.activeComponents) {
-      try {
-        runtime.onDestroy?.();
-      } catch (error) {
-        console.error(`[GameEngine] Error in destroy of ${runtime.scriptName}:`, error);
-      }
+    for (const [key, { instanceId }] of this.componentInstances) {
+      this.scriptEngine.destroyInstance(instanceId);
     }
 
-    this.activeComponents.clear();
+    this.componentInstances.clear();
     this.objectComponents.clear();
   }
 
   private destroyComponent(objectId: string, componentId: string) {
     const key = `${objectId}:${componentId}`;
-    const runtime = this.activeComponents.get(key);
+    const data = this.componentInstances.get(key);
 
-    if (runtime) {
-      runtime.onDestroy?.();
-      this.activeComponents.delete(key);
+    if (data) {
+      this.scriptEngine.destroyInstance(data.instanceId);
+      this.componentInstances.delete(key);
       this.objectComponents.get(objectId)?.delete(componentId);
     }
   }
@@ -608,89 +506,10 @@ export class GameEngine extends EventEmitter {
   private async processHotReloadQueue() {
     while (this.hotReloadQueue.length > 0) {
       const { file, content } = this.hotReloadQueue.shift()!;
-      await this.reloadScript(file, content);
+      const scriptName = file.replace(/\.js$/, '');
+      await this.scriptEngine.reloadScript(scriptName, content);
+      this.emitGameEvent('hot-reload:complete', { scriptName });
     }
-  }
-
-  private async reloadScript(fileName: string, newContent: string) {
-    const scriptName = fileName.replace(/\.js$/, '');
-
-    // Находим все компоненты с этим скриптом
-    const affectedComponents: ComponentRuntime[] = [];
-
-    for (const [key, runtime] of this.activeComponents) {
-      if (runtime.scriptName === scriptName) {
-        affectedComponents.push(runtime);
-      }
-    }
-
-    if (affectedComponents.length === 0) {
-      console.log(`[GameEngine] No active components using script: ${scriptName}`);
-      return;
-    }
-
-    console.log(`[GameEngine] Reloading ${affectedComponents.length} components of ${scriptName}`);
-
-    // Перезагружаем скрипт в ScriptEngine
-    await this.scriptEngine.reloadScript(scriptName, newContent);
-
-    // Пересоздаем компоненты
-    for (const runtime of affectedComponents) {
-      try {
-        // Сохраняем состояние
-        const oldState = { ...runtime.state };
-
-        // Вызываем onHotReload если есть
-        if (runtime.onHotReload) {
-          runtime.onHotReload(oldState);
-        }
-
-        // Вызываем onDisable и onDestroy
-        runtime.onDisable?.();
-        runtime.onDestroy?.();
-
-        // Загружаем новый скрипт
-        const newModule = await this.scriptEngine.loadScript(scriptName);
-
-        if (!newModule) {
-          console.error(`[GameEngine] Failed to reload script: ${scriptName}`);
-          continue;
-        }
-
-        // Обновляем модуль
-        runtime.module = newModule;
-
-        // Восстанавливаем состояние
-        runtime.state = { ...oldState, ...runtime.state };
-
-        // Создаем новый контекст и переинициализируем
-        const context = this.createScriptContext(runtime);
-        const newInstance = newModule.setup(context);
-
-        runtime.instance = newInstance;
-
-        if (newInstance) {
-          runtime.update = newInstance.update?.bind(newInstance);
-          runtime.fixedUpdate = newInstance.fixedUpdate?.bind(newInstance);
-          runtime.lateUpdate = newInstance.lateUpdate?.bind(newInstance);
-          runtime.onEnable = newInstance.onEnable?.bind(newInstance);
-          runtime.onDisable = newInstance.onDisable?.bind(newInstance);
-          runtime.onDestroy = newInstance.onDestroy?.bind(newInstance);
-          runtime.onHotReload = newInstance.onHotReload?.bind(newInstance);
-        }
-
-        // Вызываем onEnable
-        if (runtime.enabled) {
-          runtime.onEnable?.();
-        }
-
-        console.log(`[GameEngine] Component reloaded: ${scriptName} on ${runtime.objectId}`);
-      } catch (error) {
-        console.error(`[GameEngine] Failed to reload component ${scriptName}:`, error);
-      }
-    }
-
-    this.emitGameEvent('hot-reload:complete', { scriptName });
   }
 
   // ==================== Система событий ====================
@@ -731,7 +550,6 @@ export class GameEngine extends EventEmitter {
         }
       }
 
-      // Также пробрасываем в основной EventEmitter
       this.emit(event.type, event.data);
     }
   }
@@ -754,7 +572,6 @@ export class GameEngine extends EventEmitter {
   }
 
   instantiate(prefabId: string, position?: THREE.Vector3): string | null {
-    // Заглушка для инстанцирования префабов
     console.log(`[GameEngine] Instantiating prefab: ${prefabId}`);
     return null;
   }
@@ -764,12 +581,6 @@ export class GameEngine extends EventEmitter {
   }
 
   // ==================== Физика ====================
-
-  private physicsObjects: Map<string, {
-    velocity: THREE.Vector3;
-    mass: number;
-    useGravity: boolean;
-  }> = new Map();
 
   addForce(objectId: string, force: THREE.Vector3) {
     const physics = this.physicsObjects.get(objectId);
@@ -816,23 +627,4 @@ export class GameEngine extends EventEmitter {
   isPaused(): boolean {
     return this.gameState.isPaused;
   }
-}
-
-// Типы для рантайма компонентов
-interface ComponentRuntime {
-  id: string;
-  scriptName: string;
-  objectId: string;
-  object: THREE.Object3D;
-  state: Record<string, any>;
-  enabled: boolean;
-  module: any;
-  instance: any;
-  update?: (deltaTime: number) => void;
-  fixedUpdate?: (fixedDeltaTime: number) => void;
-  lateUpdate?: (deltaTime: number) => void;
-  onEnable?: () => void;
-  onDisable?: () => void;
-  onDestroy?: () => void;
-  onHotReload?: (oldState: any) => void;
 }

@@ -179,24 +179,24 @@ export function VREditorScene({ initialSceneId, onExit }: VREditorSceneProps) {
       case 'settings':
         return (
           <VRMenu
-            title="Настройки"
+            title="Settings"
             buttons={[
               {
                 id: 'back',
-                label: '← Назад',
-                action: () => editorManager.openMenu('main'),
+                label: '<- Back',
+                onClick: () => editorManager.openMenu('main'),
               },
               {
                 id: 'snap-toggle',
-                label: `Привязка: ${state.snapEnabled ? 'Вкл' : 'Выкл'}`,
-                action: () => {
+                label: `Snap: ${state.snapEnabled ? 'On' : 'Off'}`,
+                onClick: () => {
                   // Переключение привязки
                 },
               },
               {
                 id: 'exit',
-                label: 'Выйти из редактора',
-                action: handleExit,
+                label: 'Exit editor',
+                onClick: handleExit,
                 variant: 'danger',
               },
             ]}
@@ -208,7 +208,7 @@ export function VREditorScene({ initialSceneId, onExit }: VREditorSceneProps) {
       default:
         return (
           <VRMenu
-            title="VR Редактор"
+            title="VR Editor"
             buttons={menuButtons}
             attachToHead
             distance={1.5}
@@ -223,10 +223,6 @@ export function VREditorScene({ initialSceneId, onExit }: VREditorSceneProps) {
 
   return (
     <group>
-      {/* Лучи контроллеров */}
-      <VRControllerRay controller={left} color="#2563eb" />
-      <VRControllerRay controller={right} color="#ef4444" />
-
       {/* Меню */}
       {renderMenu()}
 

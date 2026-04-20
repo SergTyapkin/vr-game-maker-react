@@ -45,13 +45,13 @@ export class XRInteractionManager {
   register(id: string, obj: InteractiveObject): () => void {
     const existingObj = this.interactiveObjects.get(id);
     if (existingObj) {
-      console.warn(`[XRInteractionManager] Object already registered: ${id}`, existingObj);
+      // console.warn(`[XRInteractionManager] Object already registered: ${id}`, existingObj);
       return () => {};
     }
     this.interactiveObjects.set(id, obj);
-    console.log(`[XRInteractionManager] Registered: ${id}`, obj);
+    // console.log(`[XRInteractionManager] Registered: ${id}`, obj);
     return () => {
-      console.log(`[XRInteractionManager] Unregistered: ${id}`, obj);
+      // console.log(`[XRInteractionManager] Unregistered: ${id}`, obj);
       this.interactiveObjects.delete(id);
     };
   }

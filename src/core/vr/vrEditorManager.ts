@@ -21,7 +21,7 @@ export interface VRMenuButton {
   id: string;
   label: string;
   icon?: string;
-  action: () => void;
+  onClick: () => void;
   variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
 }
@@ -440,64 +440,64 @@ export class VREditorManager extends EventEmitter {
     return [
       {
         id: 'select',
-        label: 'Выделение',
+        label: 'Select',
         icon: '👆',
-        action: () => this.activateTool('select'),
+        onClick: () => this.activateTool('select'),
         variant: this.state.mode === 'select' ? 'primary' : 'secondary',
       },
       {
         id: 'translate',
-        label: 'Перемещение',
+        label: 'Move',
         icon: '↔️',
-        action: () => this.activateTool('translate'),
+        onClick: () => this.activateTool('translate'),
         variant: this.state.mode === 'transform' && this.state.transformMode === 'translate' ? 'primary' : 'secondary',
       },
       {
         id: 'rotate',
-        label: 'Поворот',
+        label: 'Rotate',
         icon: '🔄',
-        action: () => this.activateTool('rotate'),
+        onClick: () => this.activateTool('rotate'),
         variant: this.state.mode === 'transform' && this.state.transformMode === 'rotate' ? 'primary' : 'secondary',
       },
       {
         id: 'scale',
-        label: 'Масштаб',
+        label: 'Scale',
         icon: '📐',
-        action: () => this.activateTool('scale'),
+        onClick: () => this.activateTool('scale'),
         variant: this.state.mode === 'transform' && this.state.transformMode === 'scale' ? 'primary' : 'secondary',
       },
       {
         id: 'add',
-        label: 'Добавить',
+        label: 'Add',
         icon: '➕',
-        action: () => this.openMenu('add'),
+        onClick: () => this.openMenu('add'),
       },
       {
         id: 'duplicate',
-        label: 'Дублировать',
+        label: 'Duplicate',
         icon: '📋',
-        action: () => this.duplicateSelectedObject(),
+        onClick: () => this.duplicateSelectedObject(),
         disabled: !this.state.selectedObjectId,
       },
       {
         id: 'delete',
-        label: 'Удалить',
+        label: 'Delete',
         icon: '🗑️',
-        action: () => this.deleteSelectedObject(),
+        onClick: () => this.deleteSelectedObject(),
         variant: 'danger',
         disabled: !this.state.selectedObjectId,
       },
       {
         id: 'scenes',
-        label: 'Сцены',
+        label: 'Scenes',
         icon: '📁',
-        action: () => this.openMenu('scenes'),
+        onClick: () => this.openMenu('scenes'),
       },
       {
         id: 'settings',
-        label: 'Настройки',
+        label: 'Settings',
         icon: '⚙️',
-        action: () => this.openMenu('settings'),
+        onClick: () => this.openMenu('settings'),
       },
     ];
   }
@@ -506,49 +506,49 @@ export class VREditorManager extends EventEmitter {
     return [
       {
         id: 'back',
-        label: '← Назад',
-        action: () => this.openMenu('main'),
+        label: '<- Back',
+        onClick: () => this.openMenu('main'),
       },
       {
         id: 'add-cube',
-        label: 'Куб',
+        label: 'Cube',
         icon: '📦',
-        action: () => this.startAddingObject('primitive', 'cube'),
+        onClick: () => this.startAddingObject('primitive', 'cube'),
       },
       {
         id: 'add-sphere',
-        label: 'Сфера',
+        label: 'Sphere',
         icon: '⚪',
-        action: () => this.startAddingObject('primitive', 'sphere'),
+        onClick: () => this.startAddingObject('primitive', 'sphere'),
       },
       {
         id: 'add-cylinder',
-        label: 'Цилиндр',
+        label: 'Cylinder',
         icon: '🥫',
-        action: () => this.startAddingObject('primitive', 'cylinder'),
+        onClick: () => this.startAddingObject('primitive', 'cylinder'),
       },
       {
         id: 'add-plane',
-        label: 'Плоскость',
+        label: 'Plane',
         icon: '⬜',
-        action: () => this.startAddingObject('primitive', 'plane'),
+        onClick: () => this.startAddingObject('primitive', 'plane'),
       },
       {
         id: 'add-light-point',
-        label: 'Точечный свет',
+        label: 'Light point',
         icon: '💡',
-        action: () => this.startAddingObject('light', 'point'),
+        onClick: () => this.startAddingObject('light', 'point'),
       },
       {
         id: 'add-light-directional',
-        label: 'Направленный свет',
+        label: 'Light directional',
         icon: '☀️',
-        action: () => this.startAddingObject('light', 'directional'),
+        onClick: () => this.startAddingObject('light', 'directional'),
       },
       {
         id: 'cancel',
-        label: 'Отмена',
-        action: () => this.cancelAddObject(),
+        label: 'Cancel',
+        onClick: () => this.cancelAddObject(),
         variant: 'danger',
       },
     ];

@@ -105,10 +105,18 @@ export function VRUI({ initialMode, initialSceneId }: VRUIProps) {
     router.push('/');
   }, [router, sceneManager, editorManager]);
 
-  const handleSelectScene = useCallback((sceneId: string) => {
+  const handleSelectScene = useCallback((sceneId: string, isCreated?: boolean) => {
     setSelectedSceneId(sceneId);
     // После выбора сцены возвращаемся в главное меню
-    setCurrentView('main');
+    if (!isCreated) {
+      setCurrentView('main');
+    }
+  }, []);
+
+  const handleEditScene = useCallback((sceneId: string) => {
+    setSelectedSceneId(sceneId);
+    // После выбора сцены возвращаемся в главное меню
+    setCurrentView('editor');
   }, []);
 
   // Показываем загрузку
@@ -149,6 +157,7 @@ export function VRUI({ initialMode, initialSceneId }: VRUIProps) {
       <ScenesMenu
         onBack={handleBackToMain}
         onSelectScene={handleSelectScene}
+        onEditScene={handleEditScene}
         currentSceneId={selectedSceneId}
       />
     );
@@ -167,7 +176,7 @@ export function VRUI({ initialMode, initialSceneId }: VRUIProps) {
         },
         {
           id: 'scenes',
-          label: 'Edit scenes',
+          label: 'Scenes',
           variant: 'secondary',
           onClick: handleOpenScenes,
         },

@@ -19,11 +19,12 @@ interface SceneData {
 
 interface ScenesMenuProps {
   onBack: () => void;
-  onSelectScene: (sceneId: string) => void;
+  onSelectScene: (sceneId: string, isCreated?: boolean) => void;
+  onEditScene: (sceneId: string) => void;
   currentSceneId?: string | null;
 }
 
-export function ScenesMenu({ onBack, onSelectScene, currentSceneId }: ScenesMenuProps) {
+export function ScenesMenu({ onBack, onSelectScene, onEditScene, currentSceneId }: ScenesMenuProps) {
   const router = useRouter();
   const [scenes, setScenes] = useState<SceneData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,17 +55,20 @@ export function ScenesMenu({ onBack, onSelectScene, currentSceneId }: ScenesMenu
   };
 
   const handleCreateScene = useCallback(async () => {
-    // if (!newSceneName.trim()) return;
-    if (!newSceneName.trim()) {
-      setNewSceneName(`scene-${String(Math.random()).slice(2, 8)}`);
-      console.warn('No scene name provided. Generated scene name:', newSceneName)
+    let resultSceneName = '';
+    const trimmedName = newSceneName.trim();
+    if (!trimmedName) {
+      resultSceneName = `scene-${String(Math.random()).slice(2, 8)}`;
+      console.warn('No scene name provided. Generated scene name:', resultSceneName)
+    } else {
+      resultSceneName = trimmedName;
     }
 
     try {
       const response = await fetch('/api/scenes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newSceneName }),
+        body: JSON.stringify({ name: resultSceneName }),
       });
 
       const data = await response.json();
@@ -73,7 +77,7 @@ export function ScenesMenu({ onBack, onSelectScene, currentSceneId }: ScenesMenu
         setScenes(prev => [...prev, data.scene]);
         setIsCreating(false);
         setNewSceneName('');
-        onSelectScene(data.scene.id);
+        onSelectScene(data.scene.id, true);
       } else {
         setError(data.error);
       }
@@ -156,23 +160,30 @@ export function ScenesMenu({ onBack, onSelectScene, currentSceneId }: ScenesMenu
 
         buttons.push({
           id: `scene-${scene.id}`,
-          label: `${scene.name} ${isCurrent ? '✓' : ''}`,
+          label: `${scene.name} ${isCurrent ? '<-' : ''}`,
           variant: isCurrent ? 'primary' as const : 'secondary' as const,
           onClick: () => onSelectScene(scene.id),
         });
 
         // Добавляем кнопки действий для сцены
+        // buttons.push({
+        //   id: `edit-${scene.id}`,
+        //   label: 'Edit in browser',
+        //   variant: 'secondary' as const,
+        //   onClick: () => handleEditInBrowser(scene.id),
+        // });
+
         buttons.push({
           id: `edit-${scene.id}`,
-          label: '  ✏️ In browser',
+          label: '| Edit',
           variant: 'secondary' as const,
-          onClick: () => handleEditInBrowser(scene.id),
+          onClick: () => onEditScene(scene.id),
         });
 
         if (!isCurrent) {
           buttons.push({
             id: `delete-${scene.id}`,
-            label: '  🗑️ Delete',
+            label: '| Delete',
             variant: 'danger' as const,
             onClick: () => handleDeleteScene(scene.id, scene.name),
           });

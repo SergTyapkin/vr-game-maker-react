@@ -1,54 +1,32 @@
-import type { NextConfig } from 'next';
+// next.config.js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
+  allowedOrigins: ['192.168.0.2'],
 
-const nextConfig: NextConfig = {
-  // turbopack: false,
-  //
-  // webpack(config, options) {
-  //   // Добавляем правило для .styl файлов
-  //   config.module.rules.push({
-  //     test: /\.styl$/,
-  //     use: [
-  //       options.defaultLoaders.babel, // Поддержка импорта из JS/TS файлов
-  //       {
-  //         loader: 'stylus-loader',
-  //         options: {
-  //           stylusOptions: {
-  //             // Здесь можно указать плагины Stylus, например:
-  //             // use: [require('nib')()],
-  //             // import: ['nib'],
-  //           },
-  //         },
-  //       },
-  //     ],
-  //   });
-  //
-  //   // Правило для CSS-модулей Stylus (файлы .module.styl)
-  //   config.module.rules.push({
-  //     test: /\.module\.styl$/,
-  //     use: [
-  //       options.defaultLoaders.babel,
-  //       {
-  //         loader: 'stylus-loader',
-  //         options: {
-  //           stylusOptions: {
-  //             // Опции компилятора
-  //           },
-  //         },
-  //       },
-  //       {
-  //         loader: 'css-loader',
-  //         options: {
-  //           modules: {
-  //             localIdentName: '[local]_[hash:base64:5]',
-  //           },
-  //           importLoaders: 1,
-  //         },
-  //       },
-  //     ],
-  //   });
-  //
-  //   return config;
-  // },
+  webpack(config) {
+    config.module.rules.push({
+      test: /\.(glb|gltf|hdr|bin|jpeg|jpg|png|svg)$/,
+      type: 'asset/resource',
+    });
+
+    return config;
+  },
+
+  // Прокси для бэкенда в режиме разработки
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8000/api/:path*',
+      },
+      {
+        source: '/assets/:path*',
+        destination: 'http://localhost:8000/assets/:path*',
+      },
+    ];
+  },
 };
 
-export default nextConfig;
+module.exports = nextConfig;

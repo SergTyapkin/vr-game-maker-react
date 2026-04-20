@@ -1,10 +1,11 @@
 // app/editor/scenes/page.tsx
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { SceneManager } from '@/core/scene/SceneManager';
+import { useScenes} from "@/api/scenes/useScenes";
 import {
   AnySceneObject,
   SceneData,
@@ -14,116 +15,166 @@ import {
 } from '@/core/scene/types';
 import styles from './page.module.css';
 
-// Динамический импорт 3D вьюпорта
 const SceneViewport = dynamic(() => import('@/components/vr/SceneViewport'), {
   ssr: false,
   loading: () => <div className={styles.viewportLoading}>Загрузка 3D вьюпорта...</div>,
 });
 
-interface SceneListItem {
-  id: string;
-  name: string;
-  description?: string;
-  metadata: {
-    createdAt: string;
-    updatedAt: string;
-    version: number;
-    thumbnail?: string;
-  };
-}
-
 export default function ScenesPage() {
   const router = useRouter();
   const sceneManager = useRef(SceneManager.getInstance()).current;
+  const {
+    scenes,
+    loading,
+    error: apiError,
+    loadScenes,
+    createScene,
+    loadScene: loadSceneAPI,
+    saveScene: saveSceneAPI,
+    deleteScene: deleteSceneAPI
+  } = useScenes();
 
-  const [scenes, setScenes] = useState<SceneListItem[]>([]);
   const [currentScene, setCurrentScene] = useState<SceneData | null>(null);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newSceneName, setNewSceneName] = useState('');
+  const [newSceneDescription, setNewSceneDescription] = useState('');
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
   const [gizmoMode, setGizmoMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
-  const [snapEnabled, setSnapEnabled] = useState(false);
-  const [snapValue, setSnapValue] = useState(1);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [snapValue, setSnapValue] = useState(0.25);
   const [expandedObjects, setExpandedObjects] = useState<Set<string>>(new Set());
 
-  // Загрузка списка сцен
-  const loadScenes = useCallback(async () => {
-    try {
-      const response = await fetch('/api/scenes');
-      const data = await response.json();
-
-      if (response.ok) {
-        setScenes(data.scenes);
-      } else {
-        setError(data.error);
-      }
-    } catch (err) {
-      setError('Failed to load scenes');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Загрузка списка сцен при монтировании
   useEffect(() => {
     loadScenes();
+  }, []);
 
-    // Подписываемся на события SceneManager
-    sceneManager.on('scene:loaded', (scene: SceneData) => {
+  // Подписка на события SceneManager
+  useEffect(() => {
+    const handleSceneLoaded = (scene: SceneData) => {
       setCurrentScene(scene);
       setSelectedObjectId(null);
-    });
+      setExpandedObjects(new Set());
+    };
 
-    sceneManager.on('scene:created', (scene: SceneData) => {
+    const handleSceneCreated = (scene: SceneData) => {
       setCurrentScene(scene);
       loadScenes();
-    });
+    };
 
-    sceneManager.on('scene:saved', (scene: SceneData) => {
+    const handleSceneSaved = () => {
       setSaving(false);
       loadScenes();
-    });
+    };
 
-    sceneManager.on('object:selected', (objectId: string) => {
+    const handleObjectAdded = () => {
+      const updatedScene = sceneManager.getCurrentScene();
+      if (updatedScene) {
+        setCurrentScene({ ...updatedScene });
+      }
+    };
+
+    const handleObjectRemoved = (objectId: string) => {
+      const updatedScene = sceneManager.getCurrentScene();
+      if (updatedScene) {
+        setCurrentScene({ ...updatedScene });
+      }
+      if (selectedObjectId === objectId) {
+        setSelectedObjectId(null);
+      }
+    };
+
+    const handleObjectUpdated = () => {
+      const updatedScene = sceneManager.getCurrentScene();
+      if (updatedScene) {
+        setCurrentScene({ ...updatedScene });
+      }
+    };
+
+    const handleObjectSelected = (objectId: string) => {
       setSelectedObjectId(objectId);
-    });
+    };
 
-    sceneManager.on('scene:error', (error: Error) => {
-      setError(error.message);
-    });
+    const handleSceneError = (err: Error) => {
+      setError(err.message);
+    };
+
+    sceneManager.on('scene:loaded', handleSceneLoaded);
+    sceneManager.on('scene:created', handleSceneCreated);
+    sceneManager.on('scene:saved', handleSceneSaved);
+    sceneManager.on('object:added', handleObjectAdded);
+    sceneManager.on('object:removed', handleObjectRemoved);
+    sceneManager.on('object:updated', handleObjectUpdated);
+    sceneManager.on('object:selected', handleObjectSelected);
+    sceneManager.on('scene:error', handleSceneError);
 
     return () => {
-      sceneManager.removeAllListeners();
+      sceneManager.off('scene:loaded', handleSceneLoaded);
+      sceneManager.off('scene:created', handleSceneCreated);
+      sceneManager.off('scene:saved', handleSceneSaved);
+      sceneManager.off('object:added', handleObjectAdded);
+      sceneManager.off('object:removed', handleObjectRemoved);
+      sceneManager.off('object:updated', handleObjectUpdated);
+      sceneManager.off('object:selected', handleObjectSelected);
+      sceneManager.off('scene:error', handleSceneError);
     };
-  }, [sceneManager, loadScenes]);
+  }, [sceneManager, loadScenes, selectedObjectId]);
+
+  // Обновление ошибки из API
+  useEffect(() => {
+    if (apiError) {
+      setError(apiError);
+    }
+  }, [apiError]);
 
   // Создание новой сцены
-  const handleCreateScene = () => {
+  const handleCreateScene = async () => {
     if (!newSceneName.trim()) return;
 
-    const scene = sceneManager.createScene(newSceneName);
-    setCurrentScene(scene);
-    setShowCreateDialog(false);
-    setNewSceneName('');
+    const result = await createScene(newSceneName.trim(), newSceneDescription.trim() || undefined);
+
+    if (result.success && result.scene) {
+      await sceneManager.loadScene(result.scene.id);
+      setCurrentScene(result.scene);
+      setShowCreateDialog(false);
+      setNewSceneName('');
+      setNewSceneDescription('');
+    }
   };
 
   // Загрузка сцены
   const handleLoadScene = async (sceneId: string) => {
-    setLoading(true);
-    const scene = await sceneManager.loadScene(sceneId);
-    if (scene) {
-      setCurrentScene(scene);
+    const result = await loadSceneAPI(sceneId);
+
+    if (result.success && result.scene) {
+      await sceneManager.loadScene(sceneId);
+      setCurrentScene(result.scene);
+      setSelectedObjectId(null);
+      setExpandedObjects(new Set());
     }
-    setLoading(false);
   };
 
   // Сохранение сцены
   const handleSaveScene = async () => {
+    if (!currentScene) return;
+
     setSaving(true);
-    await sceneManager.saveScene();
+
+    const sceneData = sceneManager.getCurrentScene();
+    if (!sceneData) {
+      setSaving(false);
+      return;
+    }
+
+    const result = await saveSceneAPI(sceneData);
+
+    if (result.success) {
+      setCurrentScene(result.scene);
+    }
+
     setSaving(false);
   };
 
@@ -131,19 +182,19 @@ export default function ScenesPage() {
   const handleDeleteScene = async (sceneId: string, sceneName: string) => {
     if (!confirm(`Удалить сцену "${sceneName}"?`)) return;
 
-    try {
-      const response = await fetch(`/api/scenes/${sceneId}`, {
-        method: 'DELETE',
-      });
+    const result = await deleteSceneAPI(sceneId);
 
-      if (response.ok) {
-        loadScenes();
-        if (currentScene?.id === sceneId) {
-          setCurrentScene(null);
-        }
+    if (result.success) {
+      if (currentScene?.id === sceneId) {
+        setCurrentScene(null);
       }
-    } catch (err) {
-      setError('Failed to delete scene');
+    }
+  };
+
+  // Вход в VR редактор
+  const handleEditInVR = () => {
+    if (currentScene) {
+      router.push(`/vr?mode=editor&sceneId=${currentScene.id}`);
     }
   };
 
@@ -158,6 +209,10 @@ export default function ScenesPage() {
         rotation: [0, 0, 0],
         scale: [1, 1, 1],
       },
+      visible: true,
+      locked: false,
+      children: [],
+      components: [],
     };
 
     if (type === 'primitive') {
@@ -188,6 +243,19 @@ export default function ScenesPage() {
 
     const objectId = sceneManager.addObject(newObject, selectedObjectId || undefined);
     setSelectedObjectId(objectId);
+
+    const updatedScene = sceneManager.getCurrentScene();
+    if (updatedScene) {
+      setCurrentScene({ ...updatedScene });
+    }
+
+    if (selectedObjectId) {
+      setExpandedObjects(prev => {
+        const next = new Set(prev);
+        next.add(selectedObjectId);
+        return next;
+      });
+    }
   };
 
   // Удаление объекта
@@ -195,6 +263,11 @@ export default function ScenesPage() {
     sceneManager.removeObject(objectId);
     if (selectedObjectId === objectId) {
       setSelectedObjectId(null);
+    }
+
+    const updatedScene = sceneManager.getCurrentScene();
+    if (updatedScene) {
+      setCurrentScene({ ...updatedScene });
     }
   };
 
@@ -209,16 +282,31 @@ export default function ScenesPage() {
 
     const newId = sceneManager.addObject(duplicated, object.parentId);
     setSelectedObjectId(newId);
+
+    const updatedScene = sceneManager.getCurrentScene();
+    if (updatedScene) {
+      setCurrentScene({ ...updatedScene });
+    }
   };
 
   // Обновление трансформации
   const handleTransformChange = (objectId: string, transform: Partial<Transform>) => {
     sceneManager.transformObject(objectId, transform);
+
+    const updatedScene = sceneManager.getCurrentScene();
+    if (updatedScene) {
+      setCurrentScene({ ...updatedScene });
+    }
   };
 
   // Обновление свойств объекта
   const handlePropertyChange = (objectId: string, updates: Partial<AnySceneObject>) => {
     sceneManager.updateObject(objectId, updates);
+
+    const updatedScene = sceneManager.getCurrentScene();
+    if (updatedScene) {
+      setCurrentScene({ ...updatedScene });
+    }
   };
 
   // Переключение видимости
@@ -226,6 +314,11 @@ export default function ScenesPage() {
     const object = currentScene?.objects[objectId];
     if (object) {
       sceneManager.updateObject(objectId, { visible: !object.visible });
+
+      const updatedScene = sceneManager.getCurrentScene();
+      if (updatedScene) {
+        setCurrentScene({ ...updatedScene });
+      }
     }
   };
 
@@ -234,12 +327,23 @@ export default function ScenesPage() {
     const object = currentScene?.objects[objectId];
     if (object) {
       sceneManager.updateObject(objectId, { locked: !object.locked });
+
+      const updatedScene = sceneManager.getCurrentScene();
+      if (updatedScene) {
+        setCurrentScene({ ...updatedScene });
+      }
     }
   };
 
   // Отмена действия
   const handleUndo = () => {
-    sceneManager.undo();
+    const success = sceneManager.undo();
+    if (success) {
+      const updatedScene = sceneManager.getCurrentScene();
+      if (updatedScene) {
+        setCurrentScene({ ...updatedScene });
+      }
+    }
   };
 
   // Переключение раскрытия в иерархии
@@ -253,15 +357,46 @@ export default function ScenesPage() {
     setExpandedObjects(newExpanded);
   };
 
+  // Получение иконки объекта
+  const getObjectIcon = (object: AnySceneObject): string => {
+    switch (object.type) {
+      case 'primitive':
+        const primObj = object as any;
+        switch (primObj.primitiveType) {
+          case 'cube': return '📦';
+          case 'sphere': return '⚪';
+          case 'cylinder': return '🥫';
+          case 'plane': return '⬜';
+          case 'torus': return '🍩';
+          case 'cone': return '🔺';
+          default: return '📐';
+        }
+      case 'model': return '🗿';
+      case 'light':
+        const lightObj = object as any;
+        switch (lightObj.lightType) {
+          case 'ambient': return '☀️';
+          case 'directional': return '🔦';
+          case 'point': return '💡';
+          case 'spot': return '🎯';
+          default: return '✨';
+        }
+      case 'effect': return '🌈';
+      default: return '📁';
+    }
+  };
+
   // Рендер иерархии объектов
   const renderHierarchy = (objectIds: string[], level: number = 0) => {
+    if (!currentScene) return null;
+
     return objectIds.map(objectId => {
-      const object = currentScene?.objects[objectId];
+      const object = currentScene.objects[objectId];
       if (!object) return null;
 
       const isSelected = selectedObjectId === objectId;
       const isExpanded = expandedObjects.has(objectId);
-      const hasChildren = object.children.length > 0;
+      const hasChildren = object.children && object.children.length > 0;
 
       return (
         <div key={objectId} className={styles.hierarchyItem}>
@@ -317,6 +452,17 @@ export default function ScenesPage() {
               >
                 {object.locked ? '🔒' : '🔓'}
               </button>
+
+              <button
+                className={styles.duplicateButton}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDuplicateObject(objectId);
+                }}
+                title="Дублировать"
+              >
+                📋
+              </button>
             </div>
           </div>
 
@@ -328,35 +474,6 @@ export default function ScenesPage() {
         </div>
       );
     });
-  };
-
-  // Получение иконки объекта
-  const getObjectIcon = (object: AnySceneObject): string => {
-    switch (object.type) {
-      case 'primitive':
-        const primObj = object as any;
-        switch (primObj.primitiveType) {
-          case 'cube': return '📦';
-          case 'sphere': return '⚪';
-          case 'cylinder': return '🥫';
-          case 'plane': return '⬜';
-          case 'torus': return '🍩';
-          case 'cone': return '🔺';
-          default: return '📐';
-        }
-      case 'model': return '🗿';
-      case 'light':
-        const lightObj = object as any;
-        switch (lightObj.lightType) {
-          case 'ambient': return '☀️';
-          case 'directional': return '🔦';
-          case 'point': return '💡';
-          case 'spot': return '🎯';
-          default: return '✨';
-        }
-      case 'effect': return '🌈';
-      default: return '📁';
-    }
   };
 
   // Рендер инспектора свойств
@@ -565,6 +682,47 @@ export default function ScenesPage() {
                 />
               </div>
             )}
+
+            {(object as any).primitiveType === 'cylinder' && (
+              <>
+                <div className={styles.propertyRow}>
+                  <label>Radius Top</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.radiusTop || 0.5}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, radiusTop: parseFloat(e.target.value) || 0.5 }
+                    })}
+                    step={0.1}
+                    min={0}
+                  />
+                </div>
+                <div className={styles.propertyRow}>
+                  <label>Radius Bottom</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.radiusBottom || 0.5}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, radiusBottom: parseFloat(e.target.value) || 0.5 }
+                    })}
+                    step={0.1}
+                    min={0}
+                  />
+                </div>
+                <div className={styles.propertyRow}>
+                  <label>Height</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.height || 1}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, height: parseFloat(e.target.value) || 1 }
+                    })}
+                    step={0.1}
+                    min={0.1}
+                  />
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -617,25 +775,31 @@ export default function ScenesPage() {
           <button
             className={styles.addComponentButton}
             onClick={() => {
-              // Открыть диалог добавления компонента
+              // TODO: Открыть диалог добавления компонента
+              console.log('Add component to', selectedObjectId);
             }}
           >
             + Add Component
           </button>
 
-          {object.components.map(component => (
-            <div key={component.id} className={styles.componentItem}>
-              <span>{component.scriptName}</span>
-              <button
-                className={styles.removeComponentButton}
-                onClick={() => {
-                  // Удалить компонент
-                }}
-              >
-                ×
-              </button>
-            </div>
-          ))}
+          {object.components && object.components.length > 0 ? (
+            object.components.map(component => (
+              <div key={component.id} className={styles.componentItem}>
+                <span>{component.scriptName}</span>
+                <button
+                  className={styles.removeComponentButton}
+                  onClick={() => {
+                    // TODO: Удалить компонент
+                    console.log('Remove component', component.id);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className={styles.noComponents}>Нет компонентов</p>
+          )}
         </div>
       </div>
     );
@@ -665,6 +829,12 @@ export default function ScenesPage() {
                 value={newSceneName}
                 onChange={(e) => setNewSceneName(e.target.value)}
                 autoFocus
+              />
+              <input
+                type="text"
+                placeholder="Описание (необязательно)"
+                value={newSceneDescription}
+                onChange={(e) => setNewSceneDescription(e.target.value)}
               />
               <div className={styles.dialogActions}>
                 <button onClick={() => setShowCreateDialog(false)}>Отмена</button>
@@ -762,7 +932,7 @@ export default function ScenesPage() {
               <input
                 type="number"
                 value={snapValue}
-                onChange={(e) => setSnapValue(parseFloat(e.target.value) || 1)}
+                onChange={(e) => setSnapValue(parseFloat(e.target.value) || 0.25)}
                 step={0.1}
                 min={0.1}
               />
@@ -783,7 +953,9 @@ export default function ScenesPage() {
           >
             Превью
           </button>
-          <button onClick={() => router.push('/vr')}>Войти в VR</button>
+          <button onClick={handleEditInVR} className={styles.vrButton}>
+            🥽 Войти в VR
+          </button>
         </div>
       </div>
 
@@ -859,6 +1031,13 @@ export default function ScenesPage() {
           {renderInspector()}
         </div>
       </div>
+
+      {error && (
+        <div className={styles.errorToast}>
+          {error}
+          <button onClick={() => setError(null)}>×</button>
+        </div>
+      )}
     </div>
   );
 }
