@@ -6,7 +6,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoundedBox, Sphere, Cylinder, Plane, Torus, Cone } from '@react-three/drei';
 import { PrimitiveType, LightType } from '@/core/scene/types';
-import {GroupControllerTracked} from "@/components/vr/group-controller-tracked";
+import { GroupControllerTracked } from "@/components/vr/group-controller-tracked";
 
 interface VRAddObjectPreviewProps {
   type: 'primitive' | 'light' | 'model' | 'effect';
@@ -17,14 +17,15 @@ interface VRAddObjectPreviewProps {
   onPosition?: (position: THREE.Vector3, rotation: THREE.Euler) => void;
 }
 
-export function VRAddObjectPreview({
-                                     type,
-                                     subType,
-                                     controller,
-                                     snapEnabled = true,
-                                     snapValue = 0.25,
-                                     onPosition,
-                                   }: VRAddObjectPreviewProps) {
+export function VRAddObjectPreview(
+  {
+    type,
+    subType,
+    controller,
+    snapEnabled = true,
+    snapValue = 0.25,
+    onPosition,
+  }: VRAddObjectPreviewProps) {
   const groupRef = useRef<THREE.Group>(null);
   const [isValidPosition, setIsValidPosition] = useState(true);
 

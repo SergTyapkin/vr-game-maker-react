@@ -1,9 +1,10 @@
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'export',
+  distDir: 'dist',
   reactStrictMode: true,
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
-  allowedOrigins: ['192.168.0.2'],
 
   webpack(config) {
     config.module.rules.push({

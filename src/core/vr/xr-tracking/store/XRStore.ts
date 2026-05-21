@@ -79,7 +79,7 @@ export class XRStore {
   }
 
   // Подписка на конкретный тип
-  subscribe(type: 'controllers' | 'head' | 'body' | 'hands', listener: () => void): () => void {
+  subscribe(type: 'controllers' | 'head', listener: () => void): () => void {
     this.listeners[type].add(listener);
     return () => {
       this.listeners[type].delete(listener);

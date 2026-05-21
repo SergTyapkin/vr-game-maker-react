@@ -30,7 +30,7 @@ export function useSceneManager(options: UseSceneManagerOptions = {}) {
     if (options.user) {
       sceneManager.setCurrentUser(options.user);
     }
-  }, [options.user]);
+  }, [options.user, sceneManager]);
 
   // Подключение
   useEffect(() => {
@@ -69,16 +69,31 @@ export function useSceneManager(options: UseSceneManagerOptions = {}) {
       setCurrentScene(scene);
     };
 
-    const handleUserJoined = (user: SceneUser) => {
+    const handleUserJoined = () => {
       setRemoteUsers(sceneManager.getRemoteUsers());
     };
 
-    const handleUserLeft = (user: SceneUser) => {
+    const handleUserLeft = () => {
       setRemoteUsers(sceneManager.getRemoteUsers());
     };
 
     const handleError = (err: Error) => {
       setError(err);
+    };
+
+    const handleObjectAdded = () => {
+      const scene = sceneManager.getCurrentScene();
+      if (scene) setCurrentScene({ ...scene });
+    };
+
+    const handleObjectRemoved = () => {
+      const scene = sceneManager.getCurrentScene();
+      if (scene) setCurrentScene({ ...scene });
+    };
+
+    const handleObjectUpdated = () => {
+      const scene = sceneManager.getCurrentScene();
+      if (scene) setCurrentScene({ ...scene });
     };
 
     sceneManager.on('ws:connected', handleConnected);
@@ -89,6 +104,171 @@ export function useSceneManager(options: UseSceneManagerOptions = {}) {
     sceneManager.on('user:left', handleUserLeft);
     sceneManager.on('scene:error', handleError);
     sceneManager.on('ws:error', handleError);
+    sceneManager.on('object:added', handleObjectAdded);
+    sceneManager.on('object:removed', handleObjectRemoved);
+    sceneManager.on('object:updated', handleObjectUpdated);
 
     return () => {
-      sceneManager
+      sceneManager.off('ws:connected', handleConnected);
+      sceneManager.off('ws:disconnected', handleDisconnected);
+      sceneManager.off('scene:loaded', handleSceneLoaded);
+      sceneManager.off('scene:synced', handleSceneSynced);
+      sceneManager.off('user:joined', handleUserJoined);
+      sceneManager.off('user:left', handleUserLeft);
+      sceneManager.off('scene:error', handleError);
+      sceneManager.off('ws:error', handleError);
+      sceneManager.off('object:added', handleObjectAdded);
+      sceneManager.off('object:removed', handleObjectRemoved);
+      sceneManager.off('object:updated', handleObjectUpdated);
+    };
+  }, [options.autoConnect, options.wsUrl, sceneManager]);
+
+  // Методы для работы со сценой
+  const loadScene = useCallback(async (sceneId: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const scene = await sceneManager.loadScene(sceneId);
+      if (scene) {
+        setCurrentScene(scene);
+      }
+      return scene;
+    } catch (err) {
+      setError(err as Error);
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [sceneManager]);
+
+  const createScene = useCallback((name: string) => {
+    try {
+      const scene = sceneManager.createScene(name);
+      setCurrentScene(scene);
+      return scene;
+    } catch (err) {
+      setError(err as Error);
+      return null;
+    }
+  }, [sceneManager]);
+
+  const saveScene = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const success = await sceneManager.saveScene();
+      return success;
+    } catch (err) {
+      setError(err as Error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [sceneManager]);
+
+  // Методы для работы с объектами
+  const addObject = useCallback((object: Partial<AnySceneObject>, parentId?: string) => {
+    try {
+      const id = sceneManager.addObject(object, parentId);
+      return id;
+    } catch (err) {
+      setError(err as Error);
+      return null;
+    }
+  }, [sceneManager]);
+
+  const removeObject = useCallback((objectId: string) => {
+    try {
+      sceneManager.removeObject(objectId);
+    } catch (err) {
+      setError(err as Error);
+    }
+  }, [sceneManager]);
+
+  const updateObject = useCallback((objectId: string, updates: Partial<AnySceneObject>) => {
+    try {
+      sceneManager.updateObject(objectId, updates);
+    } catch (err) {
+      setError(err as Error);
+    }
+  }, [sceneManager]);
+
+  const transformObject = useCallback((objectId: string, transform: Partial<Transform>) => {
+    try {
+      sceneManager.transformObject(objectId, transform);
+    } catch (err) {
+      setError(err as Error);
+    }
+  }, [sceneManager]);
+
+  // Методы для работы с сетью
+  const sendControllerState = useCallback((controller: 'left' | 'right', state: {
+    position: [number, number, number];
+    rotation: [number, number, number];
+    buttons: Record<string, boolean>;
+  }) => {
+    sceneManager.sendControllerState(controller, state);
+  }, [sceneManager]);
+
+  const sendSelectionUpdate = useCallback((objectId: string | null) => {
+    sceneManager.sendSelectionUpdate(objectId);
+  }, [sceneManager]);
+
+  // История
+  const undo = useCallback(() => {
+    const success = sceneManager.undo();
+    if (success) {
+      const scene = sceneManager.getCurrentScene();
+      if (scene) setCurrentScene({ ...scene });
+    }
+    return success;
+  }, [sceneManager]);
+
+  // Получение объектов
+  const getObject = useCallback((id: string) => {
+    return sceneManager.getObjectById(id);
+  }, [sceneManager]);
+
+  const getThreeObject = useCallback((id: string) => {
+    return sceneManager.getThreeObjectById(id);
+  }, [sceneManager]);
+
+  // Отключение
+  const disconnect = useCallback(() => {
+    sceneManager.disconnect();
+  }, [sceneManager]);
+
+  return {
+    // Состояние
+    currentScene,
+    remoteUsers,
+    isConnected,
+    sessionId,
+    isLoading,
+    error,
+    
+    // Методы для сцены
+    loadScene,
+    createScene,
+    saveScene,
+    
+    // Методы для объектов
+    addObject,
+    removeObject,
+    updateObject,
+    transformObject,
+    getObject,
+    getThreeObject,
+    
+    // Сетевые методы
+    sendControllerState,
+    sendSelectionUpdate,
+    
+    // Утилиты
+    undo,
+    disconnect,
+    
+    // Доступ к менеджеру (для продвинутого использования)
+    sceneManager,
+  };
+}

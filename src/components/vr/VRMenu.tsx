@@ -1,13 +1,13 @@
 // components/vr/VRMenu.tsx
 'use client';
 
-import {ReactNode, useMemo, useRef, useCallback, useState} from 'react';
+import { ReactNode, useMemo, useRef, useCallback, useState } from 'react';
 import { Text3D, RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
-import {useInteractive} from "@/core/vr/xr-tracking/hooks/useInteractive";
-import {GroupHeadTracked} from "@/components/vr/group-head-tracked";
-import {GroupControllerTracked} from "@/components/vr/group-controller-tracked";
-import {GroupFacedInCamera} from "@/components/vr/group-faced-in-camera";
+import { useInteractive } from "@/core/vr/xr-tracking/hooks/useInteractive";
+import { GroupHeadTracked } from "@/components/vr/group-head-tracked";
+import { GroupControllerTracked } from "@/components/vr/group-controller-tracked";
+import { GroupFacedInCamera } from "@/components/vr/group-faced-in-camera";
 
 
 export interface MenuButton {
@@ -33,11 +33,11 @@ interface VRMenuProps {
 
 // Отдельный компонент для интерактивной кнопки
 function MenuButton3D({
-                        button,
-                        width,
-                        height,
-                        position,
-                      }: {
+  button,
+  width,
+  height,
+  position,
+}: {
   button: MenuButton;
   width: number;
   height: number;
@@ -106,17 +106,18 @@ function MenuButton3D({
   );
 }
 
-export function VRMenu({
-                         title = 'Меню',
-                         buttons,
-                         position = [0, 0, 0],
-                         width = 0.8,
-                         buttonHeight = 0.12,
-                         spacing = 0.02,
-                         attachToHead = false,
-                         attachToController = null,
-                         distance = 2,
-                       }: VRMenuProps) {
+export function VRMenu(
+  {
+    title = 'Меню',
+    buttons,
+    position = [0, 0, 0],
+    width = 0.8,
+    buttonHeight = 0.12,
+    spacing = 0.02,
+    attachToHead = false,
+    attachToController = null,
+    distance = 2,
+  }: VRMenuProps) {
   const totalHeight = buttons.length * (buttonHeight + spacing) + 0.2;
 
   const menuContent = useMemo(() => (

@@ -20,6 +20,7 @@ export interface SceneObjectBase {
   locked: boolean;
   parentId?: string;
   children: string[];
+  components: ComponentInstance[];
 }
 
 export interface PrimitiveObject extends SceneObjectBase {
@@ -74,6 +75,10 @@ export interface EffectObject extends SceneObjectBase {
   params: Record<string, any>;
 }
 
+export interface EmptyObject extends SceneObjectBase {
+  type: 'empty';
+}
+
 export interface ComponentInstance {
   id: string;
   scriptName: string;
@@ -85,7 +90,7 @@ export interface SceneObject extends SceneObjectBase {
   components: ComponentInstance[];
 }
 
-export type AnySceneObject = PrimitiveObject | ModelObject | LightObject | EffectObject;
+export type AnySceneObject = PrimitiveObject | ModelObject | LightObject | EffectObject | EmptyObject;
 
 export interface SceneData {
   id: string;
@@ -128,6 +133,7 @@ export interface SceneChange {
   data: any;
   source: 'editor' | 'vr' | 'script';
   timestamp: number;
+  userId?: string;
 }
 
 export interface SceneSnapshot {

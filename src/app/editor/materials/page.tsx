@@ -53,6 +53,7 @@ interface ShaderMaterialProperties {
   uniforms: Record<string, any>;
   wireframe: boolean;
   transparent: boolean;
+  opacity: number;
 }
 
 type MaterialProperties =
@@ -141,6 +142,7 @@ void main() {
         },
         wireframe: false,
         transparent: false,
+        opacity: 1,
       };
   }
 };

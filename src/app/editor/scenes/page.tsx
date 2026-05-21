@@ -607,7 +607,7 @@ export default function ScenesPage() {
               <label>Type</label>
               <select
                 value={(object as any).primitiveType}
-                onChange={(e) => handlePropertyChange(selectedObjectId, { primitiveType: e.target.value })}
+                onChange={(e) => handlePropertyChange(selectedObjectId, { primitiveType: e.target.value as PrimitiveType | undefined })}
               >
                 <option value="cube">Cube</option>
                 <option value="sphere">Sphere</option>
@@ -734,7 +734,7 @@ export default function ScenesPage() {
               <label>Type</label>
               <select
                 value={(object as any).lightType}
-                onChange={(e) => handlePropertyChange(selectedObjectId, { lightType: e.target.value })}
+                onChange={(e) => handlePropertyChange(selectedObjectId, { lightType: e.target.value as LightType | undefined })}
               >
                 <option value="ambient">Ambient</option>
                 <option value="directional">Directional</option>

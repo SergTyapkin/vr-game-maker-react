@@ -186,7 +186,7 @@ export default function CodeEditorPage() {
     }
   };
 
-  const handleEditorDidMount = (editor: any) => {
+  const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
 
     // Добавляем команды

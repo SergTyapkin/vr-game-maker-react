@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { VRMenu } from './VRMenu';
+import { MenuButton, VRMenu } from './VRMenu';
 import { useRouter } from 'next/navigation';
 
 interface SceneData {
@@ -129,7 +129,7 @@ export function ScenesMenu({ onBack, onSelectScene, onEditScene, currentSceneId 
     //   ];
     // }
 
-    const buttons = [
+    const buttons: MenuButton[] = [
       {
         id: 'back',
         label: '<- Back',
