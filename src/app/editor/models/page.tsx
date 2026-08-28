@@ -1,7 +1,7 @@
 // app/editor/models/page.tsx
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import styles from './page.module.css';
 
@@ -24,6 +24,31 @@ interface ModelData {
     materials?: string[];
     animations?: string[];
   };
+}
+
+function LazyModelPreview({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setVisible(true);
+      },
+      { rootMargin: '300px' },
+    );
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  return <div ref={containerRef} style={{ width: '100%', height: '100%' }}>{visible ? children : null}</div>;
 }
 
 export default function ModelsPage() {
@@ -114,7 +139,7 @@ export default function ModelsPage() {
     }
   };
 
-  const handleModelLoad = (modelId: string, info: any) => {
+  const handleModelLoad = useCallback((modelId: string, info: any) => {
     setModels(prev => prev.map(m =>
       m.id === modelId ? { ...m, metadata: info } : m
     ));
@@ -122,7 +147,7 @@ export default function ModelsPage() {
     if (selectedModel?.id === modelId) {
       setSelectedModel(prev => prev ? { ...prev, metadata: info } : null);
     }
-  };
+  }, [selectedModel?.id]);
 
   const formatSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B';
@@ -228,105 +253,101 @@ export default function ModelsPage() {
               <p>Загрузите первую 3D модель, чтобы начать работу</p>
             </div>
           ) : viewMode === 'grid' ? (
-            <div className={styles.grid}>
-              {models.map(model => (
-                <div
-                  key={model.id}
-                  className={`${styles.modelCard} ${
-                    selectedModel?.id === model.id ? styles.selected : ''
+            models.map(model => (
+              <div
+                key={model.id}
+                className={`${styles.modelCard} ${selectedModel?.id === model.id ? styles.selected : ''
                   }`}
-                  onClick={() => setSelectedModel(model)}
-                >
-                  <div className={styles.modelPreview}>
-                    {model.thumbnail ? (
-                      <img src={model.thumbnail} alt={model.name} />
-                    ) : (
-                      <div className={styles.previewPlaceholder}>
+                onClick={() => setSelectedModel(model)}
+              >
+                <div className={styles.modelPreview}>
+                  {model.thumbnail ? (
+                    <img src={model.thumbnail} alt={model.name} />
+                  ) : (
+                    <div className={styles.previewPlaceholder}>
+                      <LazyModelPreview>
                         <ModelPreview
                           url={model.url}
                           format={model.format}
                           autoRotate={false}
                           onLoad={(info) => handleModelLoad(model.id, info)}
                         />
-                      </div>
-                    )}
-                    <span className={styles.formatBadge}>{model.format.toUpperCase()}</span>
-                  </div>
-                  <div className={styles.modelInfo}>
-                    <h4 className={styles.modelName} title={model.name}>
-                      {model.name}
-                    </h4>
-                    <div className={styles.modelMeta}>
-                      <span>{formatSize(model.size)}</span>
-                      {model.metadata?.triangles && (
-                        <span>{formatNumber(model.metadata.triangles)} треуг.</span>
-                      )}
+                      </LazyModelPreview>
                     </div>
-                    <div className={styles.modelDate}>
-                      {formatDate(model.uploadedAt)}
-                    </div>
-                  </div>
-                  <button
-                    className={styles.deleteButton}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(model);
-                    }}
-                    title="Удалить"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" strokeWidth="2" />
-                    </svg>
-                  </button>
+                  )}
+                  <span className={styles.formatBadge}>{model.format.toUpperCase()}</span>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className={styles.list}>
-              {models.map(model => (
-                <div
-                  key={model.id}
-                  className={`${styles.listItem} ${
-                    selectedModel?.id === model.id ? styles.selected : ''
-                  }`}
-                  onClick={() => setSelectedModel(model)}
+                <div className={styles.modelInfo}>
+                  <h4 className={styles.modelName} title={model.name}>
+                    {model.name}
+                  </h4>
+                  <div className={styles.modelMeta}>
+                    <span>{formatSize(model.size)}</span>
+                    {model.metadata?.triangles && (
+                      <span>{formatNumber(model.metadata.triangles)} треуг.</span>
+                    )}
+                  </div>
+                  <div className={styles.modelDate}>
+                    {formatDate(model.uploadedAt)}
+                  </div>
+                </div>
+                <button
+                  className={styles.deleteButton}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(model);
+                  }}
+                  title="Удалить"
                 >
-                  <div className={styles.listPreview}>
-                    {model.thumbnail ? (
-                      <img src={model.thumbnail} alt={model.name} />
-                    ) : (
-                      <div className={styles.listPreviewPlaceholder}>
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                          <path d="M12 2L2 7v10l10 5 10-5V7l-10-5z" strokeWidth="2" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  <div className={styles.listInfo}>
-                    <h4 className={styles.listName}>{model.name}</h4>
-                    <div className={styles.listMeta}>
-                      <span className={styles.listFormat}>{model.format.toUpperCase()}</span>
-                      <span>{formatSize(model.size)}</span>
-                      {model.metadata?.triangles && (
-                        <span>{formatNumber(model.metadata.triangles)} треуг.</span>
-                      )}
-                      <span>{formatDate(model.uploadedAt)}</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" strokeWidth="2" />
+                  </svg>
+                </button>
+              </div>
+            ))
+          ) : (
+            models.map(model => (
+              <div
+                key={model.id}
+                className={`${styles.listItem} ${selectedModel?.id === model.id ? styles.selected : ''
+                  }`}
+                onClick={() => setSelectedModel(model)}
+              >
+                <div className={styles.listPreview}>
+                  {model.thumbnail ? (
+                    <img src={model.thumbnail} alt={model.name} />
+                  ) : (
+                    <div className={styles.listPreviewPlaceholder}>
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M12 2L2 7v10l10 5 10-5V7l-10-5z" strokeWidth="2" />
+                      </svg>
                     </div>
-                  </div>
-                  <button
-                    className={styles.listDeleteButton}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(model);
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" strokeWidth="2" />
-                    </svg>
-                  </button>
+                  )}
                 </div>
-              ))}
-            </div>
+                <div className={styles.listInfo}>
+                  <h4 className={styles.listName}>{model.name}</h4>
+                  <div className={styles.listMeta}>
+                    <span className={styles.listFormat}>{model.format.toUpperCase()}</span>
+                    <span>{formatSize(model.size)}</span>
+                    {model.metadata?.triangles && (
+                      <span>{formatNumber(model.metadata.triangles)} треуг.</span>
+                    )}
+                    <span>{formatDate(model.uploadedAt)}</span>
+                  </div>
+                </div>
+                <button
+                  className={styles.listDeleteButton}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(model);
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" strokeWidth="2" />
+                  </svg>
+                </button>
+              </div>
+            ))
           )}
         </div>
 

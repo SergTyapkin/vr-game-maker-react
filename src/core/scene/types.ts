@@ -3,7 +3,7 @@ import * as THREE from 'three';
 
 export type PrimitiveType = 'cube' | 'sphere' | 'cylinder' | 'plane' | 'torus' | 'cone';
 export type LightType = 'ambient' | 'directional' | 'point' | 'spot';
-export type ObjectType = 'primitive' | 'model' | 'light' | 'effect' | 'empty';
+export type ObjectType = 'primitive' | 'model' | 'light' | 'effect' | 'folder';
 
 export interface Transform {
   position: [number, number, number];
@@ -38,6 +38,7 @@ export interface PrimitiveObject extends SceneObjectBase {
     arc?: number;
   };
   materialId?: string;
+  materialProperties?: Record<string, any>;
   color?: string;
 }
 
@@ -46,6 +47,8 @@ export interface ModelObject extends SceneObjectBase {
   modelId: string;
   modelUrl: string;
   materialOverrides?: Record<string, string>;
+  materialId?: string;
+  materialProperties?: Record<string, any>;
   animations?: {
     name: string;
     playing: boolean;
@@ -75,8 +78,8 @@ export interface EffectObject extends SceneObjectBase {
   params: Record<string, any>;
 }
 
-export interface EmptyObject extends SceneObjectBase {
-  type: 'empty';
+export interface FolderObject extends SceneObjectBase {
+  type: 'folder';
 }
 
 export interface ComponentInstance {
@@ -90,7 +93,7 @@ export interface SceneObject extends SceneObjectBase {
   components: ComponentInstance[];
 }
 
-export type AnySceneObject = PrimitiveObject | ModelObject | LightObject | EffectObject | EmptyObject;
+export type AnySceneObject = PrimitiveObject | ModelObject | LightObject | EffectObject | FolderObject;
 
 export interface SceneData {
   id: string;

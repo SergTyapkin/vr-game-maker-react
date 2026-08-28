@@ -1,9 +1,9 @@
 // components/editor/ModelPreview.tsx
 'use client';
 
-import { Suspense, useRef, useState, useEffect } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, useGLTF, useFBX, Environment, Grid, Bounds, useProgress } from '@react-three/drei';
+import { Component, Suspense, useMemo, useState, useEffect } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, useGLTF, useFBX, Environment, Grid, Bounds, Center, useProgress, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import * as THREEStdLib from 'three-stdlib';
 
@@ -13,6 +13,21 @@ interface ModelPreviewProps {
   autoRotate?: boolean;
   backgroundColor?: string;
   onLoad?: (info: { vertices: number; triangles: number; materials: string[]; animations: string[] }) => void;
+}
+
+class PreviewErrorBoundary extends Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    return this.state.hasError ? <ErrorFallback error="Не удалось загрузить модель" /> : this.props.children;
+  }
 }
 
 // Компонент для отображения OBJ моделей
@@ -70,7 +85,7 @@ function OBJModel({ url, onLoad }: { url: string; onLoad?: (info: any) => void }
         setLoading(false);
       }
     );
-  }, [url, onLoad]);
+  }, [url]);
 
   if (loading) return <Loader />;
   if (error) return <ErrorFallback error={error} />;
@@ -82,7 +97,6 @@ function OBJModel({ url, onLoad }: { url: string; onLoad?: (info: any) => void }
 // Компонент для отображения GLTF/GLB моделей
 function GLTFModel({ url, onLoad }: { url: string; onLoad?: (info: any) => void }) {
   const { scene, animations } = useGLTF(url);
-  const { scene: originalScene } = useGLTF(url);
 
   useEffect(() => {
     if (scene) {
@@ -118,10 +132,10 @@ function GLTFModel({ url, onLoad }: { url: string; onLoad?: (info: any) => void 
         animations: animations.map(a => a.name || 'Unnamed'),
       });
     }
-  }, [scene, animations, onLoad]);
+  }, [scene, animations]);
 
   // Клонируем сцену для предпросмотра
-  const clonedScene = useRef(originalScene.clone()).current;
+  const clonedScene = useMemo(() => scene.clone(), [scene]);
 
   return <primitive object={clonedScene} />;
 }
@@ -164,26 +178,23 @@ function FBXModel({ url, onLoad }: { url: string; onLoad?: (info: any) => void }
         animations: [],
       });
     }
-  }, [fbx, onLoad]);
+  }, [fbx]);
 
   return <primitive object={fbx} />;
 }
 
-// Автоматическое вращение камеры
 function AutoRotate({ enabled = true, speed = 0.5 }: { enabled?: boolean; speed?: number }) {
-  const controlsRef = useRef<any>(null);
-  const { camera } = useThree();
-
-  useFrame((state, delta) => {
-    if (controlsRef.current && enabled) {
-      controlsRef.current.target.set(0, 0, 0);
-      camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), delta * speed * 0.1);
-      camera.lookAt(0, 0, 0);
-      controlsRef.current.update();
-    }
-  });
-
-  return <OrbitControls ref={controlsRef} enableZoom enablePan={false} />;
+  return (
+    <OrbitControls
+      autoRotate={enabled}
+      autoRotateSpeed={speed}
+      enableDamping
+      dampingFactor={0.08}
+      enableZoom
+      enablePan={false}
+      minDistance={0.1}
+    />
+  );
 }
 
 // Загрузчик
@@ -219,8 +230,6 @@ function ErrorFallback({ error }: { error: string }) {
   );
 }
 
-import { Html } from '@react-three/drei';
-
 // Основной компонент предпросмотра
 export default function ModelPreview({
                                        url,
@@ -229,8 +238,6 @@ export default function ModelPreview({
                                        backgroundColor = 'transparent',
                                        onLoad,
                                      }: ModelPreviewProps) {
-  const [cameraPosition, setCameraPosition] = useState<[number, number, number]>([3, 2, 4]);
-
   const renderModel = () => {
     switch (format.toLowerCase()) {
       case 'gltf':
@@ -246,19 +253,23 @@ export default function ModelPreview({
   };
 
   return (
-    <Canvas
-      camera={{ position: cameraPosition, fov: 50 }}
-      gl={{
-        antialias: true,
-        alpha: backgroundColor === 'transparent',
-        preserveDrawingBuffer: true,
-      }}
-      style={{ background: backgroundColor }}
-    >
-      <Suspense fallback={<Loader />}>
-        <Bounds fit clip observe margin={1.2}>
-          {renderModel()}
-        </Bounds>
+    <PreviewErrorBoundary>
+      <Canvas
+        camera={{ position: [3, 2, 4], fov: 50 }}
+        dpr={[1, 1.5]}
+        frameloop={autoRotate ? 'always' : 'demand'}
+        gl={{
+          antialias: false,
+          alpha: backgroundColor === 'transparent',
+        }}
+        style={{ background: backgroundColor }}
+      >
+        <Suspense fallback={<Loader />}>
+          <Bounds fit clip margin={1.25}>
+            <Center>
+              {renderModel()}
+            </Center>
+          </Bounds>
 
         <ambientLight intensity={0.5} />
         <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} />
@@ -279,8 +290,9 @@ export default function ModelPreview({
 
         <Environment preset="city" />
 
-        <AutoRotate enabled={autoRotate} speed={0.3} />
-      </Suspense>
-    </Canvas>
+          <AutoRotate enabled={autoRotate} speed={0.3} />
+        </Suspense>
+      </Canvas>
+    </PreviewErrorBoundary>
   );
 }

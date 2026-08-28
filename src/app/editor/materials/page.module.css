@@ -24,6 +24,7 @@
     margin-top: 1.5rem;
     padding-top: 1.5rem;
     border-top: 1px solid var(--border-light);
+    max-width: 300px;
 }
 
 .previewTitle {
@@ -127,7 +128,7 @@
 }
 
 .materialsList {
-    width: 320px;
+    width: 250px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-lg);
@@ -269,6 +270,46 @@
     padding: 1.5rem;
 }
 
+.editorWorkspace {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(280px, 42%);
+    align-items: start;
+    gap: 1.5rem;
+}
+
+.settingsColumn {
+    min-width: 0;
+}
+
+.previewSection {
+    position: sticky;
+    top: 0;
+    min-width: 0;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.advancedOptions {
+    margin: 0 0 1.25rem;
+    padding: 0.75rem 0.875rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+}
+
+.advancedOptions summary {
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    list-style-position: inside;
+}
+
+.advancedOptions[open] summary {
+    margin-bottom: 1rem;
+}
+
 .formGroup {
     margin-bottom: 1.25rem;
 }
@@ -388,12 +429,6 @@
 }
 
 /* Стили для Material Preview в 3D */
-.previewSection {
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--border-light);
-}
-
 .previewTitle {
     font-size: 0.875rem;
     font-weight: 600;
@@ -415,6 +450,31 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 1rem;
+    }
+
+    .content {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .materialsList {
+        width: 100%;
+        max-height: 220px;
+        flex-shrink: 0;
+    }
+
+    .editorWorkspace {
+        grid-template-columns: 1fr;
+    }
+
+    .previewSection {
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+        padding: 0.75rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-md);
     }
 
     .content {

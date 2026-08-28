@@ -403,6 +403,18 @@
 .addButtons {
     display: flex;
     gap: 0.25rem;
+    align-items: center;
+}
+
+.modelPicker {
+    max-width: 120px;
+    height: 28px;
+    padding: 0 0.25rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.7rem;
 }
 
 .addButtons button {
@@ -868,5 +880,192 @@
     .scenesList {
         grid-template-columns: 1fr;
         padding: 1rem;
+    }
+}
+
+/* Studio workspace visual system */
+.editorContainer {
+    background: #111318;
+    color: #d8dbe2;
+}
+
+.toolbar {
+    min-height: 52px;
+    padding: 0.45rem 0.75rem;
+    background: #1a1d23;
+    border-bottom-color: #2b303a;
+}
+
+.toolbar button,
+.addButtons button,
+.viewportControls button {
+    border-color: #353b47;
+    background: #20242c;
+    color: #b9bfca;
+}
+
+.toolbar button:hover,
+.addButtons button:hover,
+.viewportControls button:hover {
+    background: #2b313c;
+    border-color: #657084;
+}
+
+.toolbar button.active,
+.gizmoButton.active,
+.viewModeButton.active {
+    background: #4b82c5;
+    border-color: #6c9fdd;
+    color: #fff;
+}
+
+.leftPanel,
+.rightPanel {
+    width: 286px;
+    background: #181b21;
+    border-color: #2b303a;
+}
+
+.panelHeader,
+.inspectorHeader {
+    min-height: 44px;
+    padding: 0.65rem 0.85rem;
+    background: #1d2027;
+    border-color: #2b303a;
+}
+
+.panelHeader h3,
+.inspectorHeader h3,
+.inspectorSection h4 {
+    color: #eef0f4;
+    letter-spacing: 0.04em;
+}
+
+.hierarchyRow {
+    min-height: 31px;
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+    color: #bfc5d0;
+}
+
+.hierarchyRow:hover {
+    background: #252a33;
+}
+
+.hierarchyRow.selected {
+    background: #315a89;
+    box-shadow: inset 3px 0 #79a9e3;
+}
+
+.objectActions {
+    opacity: 0.25;
+}
+
+.hierarchyRow:hover .objectActions,
+.hierarchyRow.selected .objectActions {
+    opacity: 1;
+}
+
+.rightPanel {
+    overflow-y: auto;
+}
+
+.inspector {
+    background: #181b21;
+}
+
+.inspectorSection {
+    margin: 0;
+    padding: 0.9rem 0.85rem;
+    border-bottom: 1px solid #2b303a;
+}
+
+.propertyRow,
+.transformRow {
+    margin-bottom: 0.65rem;
+}
+
+.propertyRow label,
+.transformRow > label {
+    color: #929aa8;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.propertyRow input,
+.propertyRow select,
+.vectorInput input {
+    background: #101217;
+    border-color: #353b47;
+    color: #e4e7ed;
+}
+
+.propertyRow select,
+.hierarchyRow select {
+    width: 100%;
+    min-height: 32px;
+    padding: 0 0.6rem;
+    border: 1px solid #3b4350;
+    border-radius: 4px;
+    background: #11151b;
+    color: #e7ebf2;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+
+.propertyRow select:hover,
+.hierarchyRow select:hover {
+    border-color: #6688b2;
+}
+
+.propertyRow select:focus,
+.hierarchyRow select:focus {
+    outline: 2px solid rgba(100, 155, 215, 0.35);
+    outline-offset: 1px;
+}
+
+.hierarchyRow[draggable="true"] {
+    cursor: grab;
+}
+
+.hierarchyRow[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.viewport {
+    background: #20242b;
+}
+
+.viewportOverlay {
+    padding: 0.75rem;
+}
+
+.viewportInfo span {
+    background: rgba(18, 21, 27, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.addButtons {
+    gap: 0.35rem;
+}
+
+.addButtons button {
+    width: 30px;
+    height: 30px;
+    font-size: 0.95rem;
+}
+
+.propertyHint {
+    margin: 0.5rem 0 0;
+    color: #808896;
+    font-size: 0.72rem;
+    line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+    .leftPanel,
+    .rightPanel {
+        width: 240px;
     }
 }

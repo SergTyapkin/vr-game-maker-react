@@ -1,5 +1,6 @@
 // core/scene/SceneManager.ts
 import * as THREE from 'three';
+import { FBXLoader, GLTFLoader, OBJLoader } from 'three-stdlib';
 import { EventEmitter } from 'events';
 import {
   SceneData,
@@ -8,9 +9,6 @@ import {
   SceneSnapshot,
   ComponentInstance,
   Transform,
-  ObjectType,
-  PrimitiveType,
-  LightType
 } from './types';
 
 // Типы для сетевого взаимодействия
@@ -74,11 +72,7 @@ export class SceneManager extends EventEmitter {
   // История
   private snapshots: SceneSnapshot[] = [];
   private maxSnapshots = 50;
-
-  // Временные объекты
-  private tempVector = new THREE.Vector3();
-  private tempEuler = new THREE.Euler();
-  private tempQuaternion = new THREE.Quaternion();
+  private redoStack: SceneSnapshot[] = [];
 
   // Настройки
   private config = {
@@ -113,6 +107,7 @@ export class SceneManager extends EventEmitter {
 
   initThreeScene(scene: THREE.Scene) {
     this.threeScene = scene;
+    this.buildThreeScene().catch((error) => this.emit('scene:error', error));
     this.emit('three:ready', scene);
   }
 
@@ -449,12 +444,21 @@ export class SceneManager extends EventEmitter {
 
     const { settings } = this.currentScene;
 
-    const ambientLight = new THREE.AmbientLight(
-      settings.ambientLight.color,
-      settings.ambientLight.intensity
-    );
-    ambientLight.userData.isDefault = true;
-    this.threeScene.add(ambientLight);
+    const ambientLight = this.threeScene.children.find(
+      (object) => object.userData.sceneDefault === 'ambient',
+    ) as THREE.AmbientLight | undefined;
+    if (ambientLight) {
+      ambientLight.color.set(settings.ambientLight.color);
+      ambientLight.intensity = settings.ambientLight.intensity;
+    } else {
+      const newAmbientLight = new THREE.AmbientLight(
+        settings.ambientLight.color,
+        settings.ambientLight.intensity,
+      );
+      newAmbientLight.userData.isDefault = true;
+      newAmbientLight.userData.sceneDefault = 'ambient';
+      this.threeScene.add(newAmbientLight);
+    }
 
     if (settings.fog) {
       const fogColor = new THREE.Color(settings.fog.color);
@@ -482,12 +486,39 @@ export class SceneManager extends EventEmitter {
       case 'light':
         object3D = this.createLight(data as any);
         break;
-      case 'empty':
+      case 'folder':
         object3D = new THREE.Group();
         break;
+      case 'model': {
+        const model = data as any;
+        const extension = String(model.modelUrl).split('?')[0].split('.').pop()?.toLowerCase();
+        const group = new THREE.Group();
+        object3D = group;
+        const loaded = await new Promise<THREE.Object3D | null>((resolve) => {
+          const onError = (error: unknown) => { console.error('[SceneManager] Failed to load model:', error); resolve(null); };
+          if (extension === 'fbx') new FBXLoader().load(model.modelUrl, resolve, undefined, onError);
+          else if (extension === 'obj') new OBJLoader().load(model.modelUrl, resolve, undefined, onError);
+          else new GLTFLoader().load(model.modelUrl, (gltf) => resolve(gltf.scene), undefined, onError);
+        });
+        if (loaded) {
+          group.add(loaded);
+          loaded.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              if (!child.userData.originalMaterial) child.userData.originalMaterial = child.material;
+              if (model.materialProperties) {
+                child.material = this.createMaterial(model.materialProperties);
+              }
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+        }
+        break;
+      }
     }
 
     if (object3D) {
+      this.addPickProxy(object3D, data.id);
       this.applyTransform(object3D, data.transform);
 
       object3D.userData.sceneId = data.id;
@@ -515,6 +546,24 @@ export class SceneManager extends EventEmitter {
     }
 
     return object3D;
+  }
+
+  private addPickProxy(object: THREE.Object3D, sceneId: string) {
+    const bounds = new THREE.Box3().setFromObject(object);
+    if (bounds.isEmpty()) return;
+
+    // НЕ отключаем raycast у дочерних объектов
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3()).max(new THREE.Vector3(0.01, 0.01, 0.01));
+    const proxy = new THREE.Mesh(
+      new THREE.BoxGeometry(size.x, size.y, size.z),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, depthTest: false }),
+    );
+    proxy.position.copy(center);
+    proxy.userData.sceneId = sceneId;
+    proxy.userData.isPickProxy = true;
+    proxy.visible = false;  // невидим для рендера
+    object.add(proxy);
   }
 
   private createPrimitive(data: any): THREE.Mesh {
@@ -567,17 +616,34 @@ export class SceneManager extends EventEmitter {
         geometry = new THREE.BoxGeometry(1, 1, 1);
     }
 
-    const material = new THREE.MeshStandardMaterial({
-      color: data.color || '#ffffff',
-      roughness: 0.5,
-      metalness: 0,
-    });
+    const material = data.materialProperties
+      ? this.createMaterial(data.materialProperties)
+      : new THREE.MeshStandardMaterial({ 
+        color: data.color || '#ffffff',
+        roughness: 0.5, 
+        metalness: 0,
+        side: data.primitiveType === 'plane' ? THREE.DoubleSide : THREE.FrontSide,
+      });
 
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.originalMaterial = material;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
     return mesh;
+  }
+
+  private createMaterial(properties: Record<string, any>): THREE.Material {
+    const common = {
+      color: properties.color || '#ffffff',
+      transparent: properties.transparent ?? false,
+      opacity: properties.opacity ?? 1,
+      wireframe: properties.wireframe ?? false,
+      depthWrite: !(properties.transparent ?? false),
+    };
+    if (properties.type === 'basic') return new THREE.MeshBasicMaterial(common);
+    if (properties.type === 'phong') return new THREE.MeshPhongMaterial({ ...common, emissive: properties.emissive || '#000000', specular: properties.specular || '#333333', shininess: properties.shininess ?? 30 });
+    return new THREE.MeshStandardMaterial({ ...common, emissive: properties.emissive || '#000000', roughness: properties.roughness ?? 0.5, metalness: properties.metalness ?? 0 });
   }
 
   private createLight(data: any): THREE.Light {
@@ -630,9 +696,10 @@ export class SceneManager extends EventEmitter {
 
     const id = this.generateId();
     const newObject: AnySceneObject = {
+      ...object,
       id,
       name: object.name || `Object_${id.slice(0, 4)}`,
-      type: object.type || 'empty',
+      type: object.type || 'folder',
       transform: object.transform || {
         position: [0, 0, 0],
         rotation: [0, 0, 0],
@@ -642,12 +709,11 @@ export class SceneManager extends EventEmitter {
       locked: object.locked ?? false,
       children: [],
       components: [],
-      ...object,
     } as AnySceneObject;
 
     this.currentScene.objects[id] = newObject;
 
-    if (parentId) {
+    if (parentId && this.currentScene.objects[parentId]?.type === 'folder') {
       const parent = this.currentScene.objects[parentId];
       if (parent) {
         parent.children.push(id);
@@ -658,6 +724,7 @@ export class SceneManager extends EventEmitter {
     }
 
     this.createThreeObject(newObject);
+    this.takeSnapshot();
 
     const change: SceneChange = {
       type: 'add',
@@ -705,6 +772,7 @@ export class SceneManager extends EventEmitter {
     }
 
     delete this.currentScene.objects[objectId];
+    this.takeSnapshot();
 
     const change: SceneChange = {
       type: 'remove',
@@ -736,6 +804,21 @@ export class SceneManager extends EventEmitter {
       if (updates.visible !== undefined) {
         threeObject.visible = updates.visible;
       }
+      if (Object.prototype.hasOwnProperty.call(updates, 'materialProperties')) {
+        threeObject.traverse((child) => {
+          if (child instanceof THREE.Mesh && !child.userData.isPickProxy) {
+            const materialProperties = (updates as any).materialProperties;
+            child.material = materialProperties
+              ? this.createMaterial(materialProperties)
+              : (child.userData.originalMaterial || child.material);
+          }
+        });
+      }
+      if ((updates as any).modelUrl) {
+        void this.rebuildThreeObject(objectId, object);
+      } else if ((updates as any).params || (updates as any).lightType || (updates as any).primitiveType) {
+        void this.rebuildThreeObject(objectId, object);
+      }
     }
 
     const change: SceneChange = {
@@ -748,8 +831,54 @@ export class SceneManager extends EventEmitter {
     };
 
     this.sendChange(change);
+    this.takeSnapshot();
     this.updateSceneVersion();
     this.emit('object:updated', { objectId, updates });
+  }
+
+  private async rebuildThreeObject(objectId: string, data: AnySceneObject) {
+    const previous = this.objectMap.get(objectId);
+    if (!previous) return;
+    const parent = previous.parent;
+    previous.parent?.remove(previous);
+    this.objectMap.delete(objectId);
+    const rebuilt = await this.createThreeObject(data);
+    if (rebuilt && parent && rebuilt.parent !== parent) parent.add(rebuilt);
+    this.emit('object:updated', { objectId, updates: data });
+  }
+
+  reparentObject(objectId: string, parentId: string | null, index?: number): boolean {
+    if (!this.currentScene || objectId === parentId) return false;
+    const object = this.currentScene.objects[objectId];
+    if (!object) return false;
+
+    let cursor = parentId;
+    while (cursor) {
+      if (cursor === objectId) return false;
+      cursor = this.currentScene.objects[cursor]?.parentId ?? null;
+    }
+
+    const parent = parentId ? this.currentScene.objects[parentId] : undefined;
+    if (parentId && (!parent || parent.type !== 'folder')) return false;
+
+    const oldParent = object.parentId ? this.currentScene.objects[object.parentId] : undefined;
+    if (oldParent) oldParent.children = oldParent.children.filter(id => id !== objectId);
+    else this.currentScene.rootObjects = this.currentScene.rootObjects.filter(id => id !== objectId);
+
+    const target = parent ? parent.children : this.currentScene.rootObjects;
+    const oldIndex = target.indexOf(objectId);
+    const adjustedIndex = oldIndex >= 0 && index !== undefined && oldIndex < index ? index - 1 : index;
+    const safeIndex = adjustedIndex === undefined ? target.length : Math.max(0, Math.min(adjustedIndex, target.length));
+    target.splice(safeIndex, 0, objectId);
+    if (parent) object.parentId = parentId!;
+    else delete object.parentId;
+
+    const threeObject = this.objectMap.get(objectId);
+    const threeParent = parentId ? this.objectMap.get(parentId) : this.threeScene;
+    if (threeObject && threeParent && threeObject.parent !== threeParent) threeParent.add(threeObject);
+    this.updateSceneVersion();
+    this.emit('object:updated', { objectId, updates: { parentId } });
+    return true;
   }
 
   transformObject(objectId: string, transform: Partial<Transform>) {
@@ -786,6 +915,7 @@ export class SceneManager extends EventEmitter {
     };
 
     this.sendChange(change);
+    this.takeSnapshot();
     this.emit('object:transformed', { objectId, transform });
   }
 
@@ -1006,15 +1136,25 @@ export class SceneManager extends EventEmitter {
     if (this.snapshots.length > this.maxSnapshots) {
       this.snapshots.shift();
     }
+    
+    // Очищаем redo стек при новом действии
+    this.clearRedoStack();
   }
 
   undo(): boolean {
     if (this.snapshots.length < 2) return false;
 
+    // Сохраняем текущее состояние в redoStack
+    const currentSnapshot = this.snapshots[this.snapshots.length - 1];
+    this.redoStack.push(currentSnapshot);
+
+    // Удаляем текущее состояние
     this.snapshots.pop();
     const snapshot = this.snapshots[this.snapshots.length - 1];
     this.currentScene = JSON.parse(JSON.stringify(snapshot.data));
-    this.buildThreeScene();
+    
+    // Перестраиваем Three.js сцену
+    void this.buildThreeScene();
 
     const change: SceneChange = {
       type: 'update',
@@ -1029,6 +1169,35 @@ export class SceneManager extends EventEmitter {
     this.emit('scene:undo', this.currentScene);
 
     return true;
+  }
+
+  redo(): boolean {
+    if (this.redoStack.length === 0) return false;
+
+    const snapshot = this.redoStack.pop()!;
+    this.snapshots.push(snapshot);
+    this.currentScene = JSON.parse(JSON.stringify(snapshot.data));
+    
+    // Перестраиваем Three.js сцену
+    void this.buildThreeScene();
+
+    const change: SceneChange = {
+      type: 'update',
+      target: 'scene',
+      data: this.currentScene,
+      source: this.currentUser?.sessionType || 'editor',
+      timestamp: Date.now(),
+      userId: this.currentUser?.id,
+    };
+
+    this.sendChange(change);
+    this.emit('scene:redo', this.currentScene);
+
+    return true;
+  }
+
+  private clearRedoStack() {
+    this.redoStack = [];
   }
 
   // ==================== Вспомогательные методы ====================

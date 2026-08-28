@@ -1,7 +1,7 @@
 // app/editor/materials/page.tsx
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sphere, Box, Plane } from '@react-three/drei';
@@ -24,6 +24,11 @@ interface StandardMaterialProperties {
   metalnessMap: string;
   aoMap: string;
   emissiveMap: string;
+  emissiveIntensity: number;
+  normalScale: number;
+  aoMapIntensity: number;
+  envMapIntensity: number;
+  flatShading: boolean;
 }
 
 interface PhongMaterialProperties {
@@ -37,6 +42,7 @@ interface PhongMaterialProperties {
   map: string;
   specularMap: string;
   normalMap: string;
+  normalScale: number;
 }
 
 interface BasicMaterialProperties {
@@ -87,6 +93,11 @@ const getDefaultProperties = (type: MaterialFormData['type']): MaterialPropertie
         metalnessMap: '',
         aoMap: '',
         emissiveMap: '',
+        emissiveIntensity: 1,
+        normalScale: 1,
+        aoMapIntensity: 1,
+        envMapIntensity: 1,
+        flatShading: false,
       };
     case 'phong':
       return {
@@ -100,6 +111,7 @@ const getDefaultProperties = (type: MaterialFormData['type']): MaterialPropertie
         map: '',
         specularMap: '',
         normalMap: '',
+        normalScale: 1,
       };
     case 'basic':
       return {
@@ -154,36 +166,89 @@ const defaultFormData: MaterialFormData = {
   previewShape: 'sphere',
 };
 
+function TextureField({
+  label,
+  value,
+  textures,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  textures: any[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className={styles.formGroup}>
+      <label>{label}</label>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Нет</option>
+        {textures.map(texture => (
+          <option key={texture.id} value={texture.url}>{texture.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+const textureCache = new Map<string, THREE.Texture>();
+
+function useMaterialTextures(entries: [string, string][]) {
+  const [textureMaps, setTextureMaps] = useState<Record<string, THREE.Texture>>({});
+
+  useEffect(() => {
+    let active = true;
+    const loader = new THREE.TextureLoader();
+
+    Promise.all(entries.map(async ([key, url]) => {
+      const cached = textureCache.get(url);
+      if (cached) return [key, cached] as const;
+
+      const texture = await new Promise<THREE.Texture>((resolve, reject) => {
+        loader.load(url, resolve, undefined, reject);
+      });
+      textureCache.set(url, texture);
+      return [key, texture] as const;
+    })).then(results => {
+      if (!active) return;
+      const maps = Object.fromEntries(results);
+      Object.entries(maps).forEach(([key, texture]) => {
+        if (key === 'map' || key === 'emissiveMap') {
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.needsUpdate = true;
+        }
+      });
+      setTextureMaps(maps);
+    }).catch(() => {
+      if (active) setTextureMaps({});
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [entries]);
+
+  return textureMaps;
+}
+
 // Компонент для 3D превью
 function MaterialPreview({
                            properties,
                            type,
                            shape,
-                           textures,
                          }: {
   properties: MaterialProperties;
   type: MaterialFormData['type'];
   shape: 'sphere' | 'cube' | 'plane';
-  textures: any[];
 }) {
-  const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.Material>(null);
 
-  // Загружаем текстуры
-  const textureMaps = useRef<Record<string, THREE.Texture | null>>({});
-
-  useEffect(() => {
-    const loader = new THREE.TextureLoader();
-
-    // Загружаем все текстуры из properties
-    Object.entries(properties).forEach(([key, value]) => {
-      if (key.endsWith('Map') && typeof value === 'string' && value) {
-        loader.load(value, (texture) => {
-          textureMaps.current[key] = texture;
-        });
-      }
-    });
-  }, [properties, textures]);
+  const textureEntries = useMemo(
+    () => Object.entries(properties).filter(
+      ([key, value]) => key.endsWith('Map') && typeof value === 'string' && value,
+    ) as [string, string][],
+    [properties],
+  );
+  const textureMaps = useMaterialTextures(textureEntries);
 
   // Анимация для шейдера
   useFrame((state) => {
@@ -195,12 +260,12 @@ function MaterialPreview({
     }
   });
 
-  // Создаем материал на основе типа
-  const getMaterial = () => {
+  const material = useMemo(() => {
     const commonProps = {
       wireframe: 'wireframe' in properties ? properties.wireframe : false,
       transparent: 'transparent' in properties ? properties.transparent : false,
       opacity: 'opacity' in properties ? properties.opacity : 1,
+      depthWrite: !('transparent' in properties && properties.transparent),
     };
 
     switch (type) {
@@ -210,29 +275,37 @@ function MaterialPreview({
           ...commonProps,
           color: props.color,
           emissive: props.emissive,
+          emissiveIntensity: props.emissiveIntensity,
           roughness: props.roughness,
           metalness: props.metalness,
+          flatShading: props.flatShading,
+          envMapIntensity: props.envMapIntensity,
+          aoMapIntensity: props.aoMapIntensity,
+          map: textureMaps.map,
+          normalMap: textureMaps.normalMap,
+          roughnessMap: textureMaps.roughnessMap,
+          metalnessMap: textureMaps.metalnessMap,
+          aoMap: textureMaps.aoMap,
+          emissiveMap: textureMaps.emissiveMap,
         });
-
-        // Применяем текстуры
-        if (textureMaps.current.map) material.map = textureMaps.current.map;
-        if (textureMaps.current.normalMap) material.normalMap = textureMaps.current.normalMap;
-        if (textureMaps.current.roughnessMap) material.roughnessMap = textureMaps.current.roughnessMap;
-        if (textureMaps.current.metalnessMap) material.metalnessMap = textureMaps.current.metalnessMap;
-
+        material.normalScale.setScalar(props.normalScale);
         return material;
       }
 
       case 'phong': {
         const props = properties as PhongMaterialProperties;
-        return new THREE.MeshPhongMaterial({
+        const material = new THREE.MeshPhongMaterial({
           ...commonProps,
           color: props.color,
           emissive: props.emissive,
           specular: props.specular,
           shininess: props.shininess,
-          map: textureMaps.current.map,
+          map: textureMaps.map,
+          normalMap: textureMaps.normalMap,
+          specularMap: textureMaps.specularMap,
         });
+        material.normalScale.setScalar(props.normalScale);
+        return material;
       }
 
       case 'basic': {
@@ -240,7 +313,7 @@ function MaterialPreview({
         return new THREE.MeshBasicMaterial({
           ...commonProps,
           color: props.color,
-          map: textureMaps.current.map,
+          map: textureMaps.map,
         });
       }
 
@@ -264,23 +337,31 @@ function MaterialPreview({
         });
       }
     }
-  };
+  }, [properties, textureMaps, type]);
 
-  const material = getMaterial();
-  materialRef.current = material;
+  useEffect(() => {
+    materialRef.current = material;
+    return () => material.dispose();
+  }, [material]);
 
   const ShapeComponent = shape === 'sphere' ? Sphere : shape === 'cube' ? Box : Plane;
   const shapeProps = shape === 'plane' ? { args: [3, 3] as [number, number] } : { args: [1.5] as [number] };
+  const ensureSecondUv = (object: THREE.Mesh) => {
+    const uv = object.geometry.getAttribute('uv');
+    if (uv && !object.geometry.getAttribute('uv2')) {
+      object.geometry.setAttribute('uv2', uv.clone());
+    }
+  };
 
   return (
     <>
       <ambientLight intensity={0.5} />
       <pointLight position={[10, 10, 10]} intensity={1} />
       <pointLight position={[-10, 5, -10]} intensity={0.5} />
-      <ShapeComponent ref={meshRef} {...shapeProps}>
+      <ShapeComponent {...shapeProps} onUpdate={ensureSecondUv}>
         <primitive object={material} attach="material" />
       </ShapeComponent>
-      <OrbitControls enableZoom={true} enablePan={false} />
+      <OrbitControls enableZoom enablePan={false} enableDamping dampingFactor={0.08} />
     </>
   );
 }
@@ -467,31 +548,34 @@ export default function MaterialsPage() {
               />
             </div>
 
-            <div className={styles.formGroup}>
-              <label>Основная текстура</label>
-              <select
-                value={(props as StandardMaterialProperties).map}
-                onChange={(e) => updateProperty('map', e.target.value)}
-              >
-                <option value="">Нет</option>
-                {textures.map(t => (
-                  <option key={t.id} value={t.url}>{t.name}</option>
-                ))}
-              </select>
-            </div>
+            <details className={styles.advancedOptions} open>
+              <summary>Карты и дополнительные параметры</summary>
+              <TextureField label="Основная текстура" value={(props as StandardMaterialProperties).map} textures={textures} onChange={(value) => updateProperty('map', value)} />
+              <TextureField label="Карта нормалей" value={(props as StandardMaterialProperties).normalMap} textures={textures} onChange={(value) => updateProperty('normalMap', value)} />
+              <TextureField label="Карта шероховатости" value={(props as StandardMaterialProperties).roughnessMap} textures={textures} onChange={(value) => updateProperty('roughnessMap', value)} />
+              <TextureField label="Карта металличности" value={(props as StandardMaterialProperties).metalnessMap} textures={textures} onChange={(value) => updateProperty('metalnessMap', value)} />
+              <TextureField label="Карта ambient occlusion" value={(props as StandardMaterialProperties).aoMap} textures={textures} onChange={(value) => updateProperty('aoMap', value)} />
+              <TextureField label="Карта свечения" value={(props as StandardMaterialProperties).emissiveMap} textures={textures} onChange={(value) => updateProperty('emissiveMap', value)} />
 
-            <div className={styles.formGroup}>
-              <label>Карта нормалей</label>
-              <select
-                value={(props as StandardMaterialProperties).normalMap}
-                onChange={(e) => updateProperty('normalMap', e.target.value)}
-              >
-                <option value="">Нет</option>
-                {textures.map(t => (
-                  <option key={t.id} value={t.url}>{t.name}</option>
-                ))}
-              </select>
-            </div>
+              <div className={styles.formGroup}>
+              <label>Сила карты нормалей: {(props as StandardMaterialProperties).normalScale}</label>
+              <input type="range" min="0" max="3" step="0.05" value={(props as StandardMaterialProperties).normalScale} onChange={(e) => updateProperty('normalScale', parseFloat(e.target.value))} />
+              </div>
+              <div className={styles.formGroup}>
+              <label>Интенсивность свечения: {(props as StandardMaterialProperties).emissiveIntensity}</label>
+              <input type="range" min="0" max="5" step="0.05" value={(props as StandardMaterialProperties).emissiveIntensity} onChange={(e) => updateProperty('emissiveIntensity', parseFloat(e.target.value))} />
+              </div>
+              <div className={styles.formGroup}>
+              <label>Интенсивность окружения: {(props as StandardMaterialProperties).envMapIntensity}</label>
+              <input type="range" min="0" max="3" step="0.05" value={(props as StandardMaterialProperties).envMapIntensity} onChange={(e) => updateProperty('envMapIntensity', parseFloat(e.target.value))} />
+              </div>
+              <div className={styles.formGroup}>
+              <label>
+                <input type="checkbox" checked={(props as StandardMaterialProperties).flatShading} onChange={(e) => updateProperty('flatShading', e.target.checked)} />
+                Плоское затенение
+              </label>
+              </div>
+            </details>
           </>
         );
 
@@ -508,6 +592,17 @@ export default function MaterialsPage() {
                 />
               </div>
             </div>
+
+            <details className={styles.advancedOptions}>
+              <summary>Карты и дополнительные параметры</summary>
+              <TextureField label="Основная текстура" value={(props as PhongMaterialProperties).map} textures={textures} onChange={(value) => updateProperty('map', value)} />
+              <TextureField label="Карта нормалей" value={(props as PhongMaterialProperties).normalMap} textures={textures} onChange={(value) => updateProperty('normalMap', value)} />
+              <TextureField label="Карта отражения" value={(props as PhongMaterialProperties).specularMap} textures={textures} onChange={(value) => updateProperty('specularMap', value)} />
+              <div className={styles.formGroup}>
+              <label>Сила карты нормалей: {(props as PhongMaterialProperties).normalScale}</label>
+              <input type="range" min="0" max="3" step="0.05" value={(props as PhongMaterialProperties).normalScale} onChange={(e) => updateProperty('normalScale', parseFloat(e.target.value))} />
+              </div>
+            </details>
 
             <div className={styles.formGroup}>
               <label>Свечение</label>
@@ -727,7 +822,9 @@ export default function MaterialsPage() {
             </div>
 
             <div className={styles.editorContent}>
-              <div className={styles.formGroup}>
+              <div className={styles.editorWorkspace}>
+                <div className={styles.settingsColumn}>
+                  <div className={styles.formGroup}>
                 <label>Название</label>
                 <input
                   type="text"
@@ -735,7 +832,7 @@ export default function MaterialsPage() {
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="Например: Металл, Дерево..."
                 />
-              </div>
+                  </div>
 
               <div className={styles.formGroup}>
                 <label>Тип материала</label>
@@ -750,8 +847,9 @@ export default function MaterialsPage() {
                 </select>
               </div>
 
-              {renderPropertiesFields()}
-              {renderCommonFields()}
+                  {renderPropertiesFields()}
+                  {renderCommonFields()}
+                </div>
 
               {/* 3D Preview */}
               <div className={styles.previewSection}>
@@ -782,10 +880,10 @@ export default function MaterialsPage() {
                       properties={formData.properties}
                       type={formData.type}
                       shape={formData.previewShape}
-                      textures={textures}
                     />
                   </Canvas>
                 </div>
+              </div>
               </div>
             </div>
 

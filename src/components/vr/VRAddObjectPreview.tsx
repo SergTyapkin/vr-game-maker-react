@@ -22,7 +22,7 @@ export function VRAddObjectPreview(
     type,
     subType,
     controller,
-    snapEnabled = true,
+    snapEnabled = false,
     snapValue = 0.25,
     onPosition,
   }: VRAddObjectPreviewProps) {

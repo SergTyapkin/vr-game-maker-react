@@ -5,6 +5,9 @@ const nextConfig = {
   distDir: 'dist',
   reactStrictMode: true,
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
+  experimental: {
+    proxyClientMaxBodySize: '100mb',
+  },
 
   webpack(config) {
     config.module.rules.push({

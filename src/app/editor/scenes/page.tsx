@@ -1,11 +1,13 @@
 // app/editor/scenes/page.tsx
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { SceneManager } from '@/core/scene/SceneManager';
 import { useScenes} from "@/api/scenes/useScenes";
+import { useModels } from '@/api/models/useModels';
+import { useMaterials } from '@/api/materials/useMaterials';
 import {
   AnySceneObject,
   SceneData,
@@ -19,6 +21,59 @@ const SceneViewport = dynamic(() => import('@/components/vr/SceneViewport'), {
   ssr: false,
   loading: () => <div className={styles.viewportLoading}>Загрузка 3D вьюпорта...</div>,
 });
+
+function NumericInput({
+  value,
+  step = 0.1,
+  min,
+  onCommit,
+}: {
+  value: number;
+  step?: number;
+  min?: number;
+  onCommit: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = () => {
+    if (draft.trim() === '' || draft === '-' || draft === '.') {
+      setDraft(String(value));
+      return;
+    }
+    const parsed = Number(draft.replace(',', '.'));
+    if (!Number.isFinite(parsed) || (min !== undefined && parsed < min)) {
+      setDraft(String(value));
+      return;
+    }
+    onCommit(parsed);
+    setDraft(String(parsed));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.currentTarget.blur();
+        }
+        if (event.key === 'Escape') {
+          setDraft(String(value));
+          event.currentTarget.blur();
+        }
+      }}
+      step={step}
+      min={min}
+    />
+  );
+}
 
 export default function ScenesPage() {
   const router = useRouter();
@@ -43,9 +98,80 @@ export default function ScenesPage() {
   const [newSceneDescription, setNewSceneDescription] = useState('');
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
   const [gizmoMode, setGizmoMode] = useState<'translate' | 'rotate' | 'scale'>('translate');
-  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [snapEnabled, setSnapEnabled] = useState(false);
   const [snapValue, setSnapValue] = useState(0.25);
   const [expandedObjects, setExpandedObjects] = useState<Set<string>>(new Set());
+  const [viewPreset, setViewPreset] = useState<'perspective' | 'front' | 'side' | 'top' | 'frame'>('perspective');
+  const { models } = useModels();
+  const { materials } = useMaterials();
+
+  // Генерация читаемого имени для объекта
+  const generateObjectName = useCallback((type: 'primitive' | 'light' | 'folder' | 'model', modelFileName?: string, scene?: SceneData | null) => {
+    if (!scene) return `New_${type}`;
+    
+    let baseName = '';
+    
+    if (type === 'primitive') {
+      baseName = 'Primitive';
+    } else if (type === 'light') {
+      baseName = 'light';
+    } else if (type === 'folder') {
+      baseName = 'folder';
+    } else if (type === 'model' && modelFileName) {
+      baseName = `model_${modelFileName}`;
+    }
+    
+    // Считаем существующие объекты с таким же базовым именем
+    const existingNames = Object.values(scene.objects).map(obj => obj.name);
+    let counter = 1;
+    let name = `${baseName}_${counter}`;
+    
+    while (existingNames.includes(name)) {
+      counter++;
+      name = `${baseName}_${counter}`;
+    }
+    
+    return name;
+  }, []);
+
+  // Обработка горячих клавиш
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.matches('input, textarea, select')) return;
+      
+      const key = event.key.toLowerCase();
+      
+      // Гизмо
+      if (key === 'g') setGizmoMode('translate');
+      if (key === 'r') setGizmoMode('rotate');
+      if (key === 's') setGizmoMode('scale');
+      if (event.key === 'Escape') setSelectedObjectId(null);
+      
+      // Удаление
+      if (event.key === 'Delete' || event.key === 'Del') {
+        event.preventDefault();
+        if (selectedObjectId) {
+          handleDeleteObject(selectedObjectId);
+        }
+      }
+      
+      // Undo/Redo
+      if (event.ctrlKey || event.metaKey) {
+        if (key === 'z' && !event.shiftKey) {
+          event.preventDefault();
+          handleUndo();
+        }
+        if (key === 'y' || (key === 'z' && event.shiftKey)) {
+          event.preventDefault();
+          handleRedo();
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [selectedObjectId, gizmoMode, snapEnabled, snapValue]);
 
   // Загрузка списка сцен при монтировании
   useEffect(() => {
@@ -102,14 +228,27 @@ export default function ScenesPage() {
       setError(err.message);
     };
 
+    const handleSceneUndo = (scene: SceneData) => {
+      setCurrentScene({ ...scene });
+      setSelectedObjectId(null);
+    };
+
+    const handleSceneRedo = (scene: SceneData) => {
+      setCurrentScene({ ...scene });
+      setSelectedObjectId(null);
+    };
+
     sceneManager.on('scene:loaded', handleSceneLoaded);
     sceneManager.on('scene:created', handleSceneCreated);
     sceneManager.on('scene:saved', handleSceneSaved);
     sceneManager.on('object:added', handleObjectAdded);
     sceneManager.on('object:removed', handleObjectRemoved);
     sceneManager.on('object:updated', handleObjectUpdated);
+    sceneManager.on('object:transformed', handleObjectUpdated);
     sceneManager.on('object:selected', handleObjectSelected);
     sceneManager.on('scene:error', handleSceneError);
+    sceneManager.on('scene:undo', handleSceneUndo);
+    sceneManager.on('scene:redo', handleSceneRedo);
 
     return () => {
       sceneManager.off('scene:loaded', handleSceneLoaded);
@@ -118,8 +257,11 @@ export default function ScenesPage() {
       sceneManager.off('object:added', handleObjectAdded);
       sceneManager.off('object:removed', handleObjectRemoved);
       sceneManager.off('object:updated', handleObjectUpdated);
+      sceneManager.off('object:transformed', handleObjectUpdated);
       sceneManager.off('object:selected', handleObjectSelected);
       sceneManager.off('scene:error', handleSceneError);
+      sceneManager.off('scene:undo', handleSceneUndo);
+      sceneManager.off('scene:redo', handleSceneRedo);
     };
   }, [sceneManager, loadScenes, selectedObjectId]);
 
@@ -199,11 +341,27 @@ export default function ScenesPage() {
   };
 
   // Добавление объекта
-  const handleAddObject = (type: 'primitive' | 'light' | 'empty', subType?: string) => {
+  const handleAddObject = (type: 'primitive' | 'light' | 'folder' | 'model', subType?: string) => {
     if (!currentScene) return;
 
+    let objectName = '';
+    let modelFileName = '';
+    
+    if (type === 'model') {
+      const model = models[0];
+      if (!model) {
+        setError('Сначала загрузите модель в разделе моделей');
+        return;
+      }
+      // Извлекаем имя файла без расширения
+      modelFileName = model.name.replace(/\.[^.]+$/, '');
+      objectName = generateObjectName(type, modelFileName, currentScene);
+    } else {
+      objectName = generateObjectName(type, undefined, currentScene);
+    }
+
     let newObject: Partial<AnySceneObject> = {
-      name: `New_${type}_${Date.now()}`,
+      name: objectName,
       transform: {
         position: [0, 0, 0],
         rotation: [0, 0, 0],
@@ -224,24 +382,48 @@ export default function ScenesPage() {
         color: '#ffffff',
       };
     } else if (type === 'light') {
+      const lightParams: Record<string, any> = {
+        color: '#ffffff',
+        intensity: 1,
+        castShadow: false,
+      };
+      
+      if (subType === 'point') {
+        lightParams.distance = 10;
+        lightParams.decay = 2;
+      } else if (subType === 'directional') {
+        lightParams.shadowMapSize = 1024;
+      } else if (subType === 'spot') {
+        lightParams.distance = 20;
+        lightParams.decay = 2;
+        lightParams.angle = 0.5;
+        lightParams.penumbra = 0.3;
+      }
+      
       newObject = {
         ...newObject,
         type: 'light',
         lightType: (subType as LightType) || 'point',
-        params: {
-          color: '#ffffff',
-          intensity: 1,
-          castShadow: false,
-        },
+        params: lightParams,
+      };
+    } else if (type === 'model') {
+      const model = models[0];
+      newObject = { 
+        ...newObject, 
+        type: 'model', 
+        modelId: model.id, 
+        modelUrl: model.url,
       };
     } else {
       newObject = {
         ...newObject,
-        type: 'empty',
+        type: 'folder',
       };
     }
 
-    const objectId = sceneManager.addObject(newObject, selectedObjectId || undefined);
+    const selectedObject = selectedObjectId ? currentScene.objects[selectedObjectId] : null;
+    const parentId = selectedObject?.type === 'folder' && selectedObjectId ? selectedObjectId : undefined;
+    const objectId = sceneManager.addObject(newObject, parentId);
     setSelectedObjectId(objectId);
 
     const updatedScene = sceneManager.getCurrentScene();
@@ -249,10 +431,10 @@ export default function ScenesPage() {
       setCurrentScene({ ...updatedScene });
     }
 
-    if (selectedObjectId) {
+    if (parentId) {
       setExpandedObjects(prev => {
         const next = new Set(prev);
-        next.add(selectedObjectId);
+        next.add(parentId);
         return next;
       });
     }
@@ -276,11 +458,20 @@ export default function ScenesPage() {
     const object = currentScene?.objects[objectId];
     if (!object) return;
 
-    const duplicated = JSON.parse(JSON.stringify(object));
-    duplicated.name = `${object.name}_copy`;
-    duplicated.transform.position[0] += 1;
+    const duplicateBranch = (sourceId: string, parentId?: string): string => {
+      const source = currentScene!.objects[sourceId];
+      const duplicated = JSON.parse(JSON.stringify(source));
+      delete duplicated.id;
+      delete duplicated.parentId;
+      duplicated.name = `${source.name}_copy`;
+      duplicated.children = [];
+      if (!parentId) duplicated.transform.position[0] += 1;
+      const newId = sceneManager.addObject(duplicated, parentId);
+      source.children.forEach(childId => duplicateBranch(childId, newId));
+      return newId;
+    };
 
-    const newId = sceneManager.addObject(duplicated, object.parentId);
+    const newId = duplicateBranch(objectId, object.parentId);
     setSelectedObjectId(newId);
 
     const updatedScene = sceneManager.getCurrentScene();
@@ -309,24 +500,43 @@ export default function ScenesPage() {
     }
   };
 
+  const assignMaterial = (objectId: string, materialId: string) => {
+    const material = materials.find(item => item.id === materialId);
+    handlePropertyChange(objectId, {
+      materialId: materialId || undefined,
+      materialProperties: material ? { ...material.properties, type: material.type } : undefined,
+    } as Partial<AnySceneObject>);
+  };
+
+  const handleDropObject = (event: React.DragEvent, targetId?: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceId = event.dataTransfer.getData('application/x-scene-object');
+    if (!sourceId || sourceId === targetId) return;
+    if (!targetId) {
+      if (sceneManager.reparentObject(sourceId, null)) {
+        const updatedScene = sceneManager.getCurrentScene();
+        if (updatedScene) setCurrentScene({ ...updatedScene });
+      }
+      return;
+    }
+    const target = currentScene?.objects[targetId];
+    const source = currentScene?.objects[sourceId];
+    if (!target || !source) return;
+    const parentId = target.type === 'folder' ? targetId : (target.parentId || null);
+    const siblings = parentId ? currentScene!.objects[parentId].children : currentScene!.rootObjects;
+    const targetIndex = target.type === 'folder' ? undefined : siblings.indexOf(targetId);
+    if (sceneManager.reparentObject(sourceId, parentId, targetIndex)) {
+      const updatedScene = sceneManager.getCurrentScene();
+      if (updatedScene) setCurrentScene({ ...updatedScene });
+    }
+  };
+
   // Переключение видимости
   const handleToggleVisibility = (objectId: string) => {
     const object = currentScene?.objects[objectId];
     if (object) {
       sceneManager.updateObject(objectId, { visible: !object.visible });
-
-      const updatedScene = sceneManager.getCurrentScene();
-      if (updatedScene) {
-        setCurrentScene({ ...updatedScene });
-      }
-    }
-  };
-
-  // Блокировка объекта
-  const handleToggleLock = (objectId: string) => {
-    const object = currentScene?.objects[objectId];
-    if (object) {
-      sceneManager.updateObject(objectId, { locked: !object.locked });
 
       const updatedScene = sceneManager.getCurrentScene();
       if (updatedScene) {
@@ -342,6 +552,19 @@ export default function ScenesPage() {
       const updatedScene = sceneManager.getCurrentScene();
       if (updatedScene) {
         setCurrentScene({ ...updatedScene });
+        setSelectedObjectId(null);
+      }
+    }
+  };
+
+  // Повтор действия
+  const handleRedo = () => {
+    const success = sceneManager.redo();
+    if (success) {
+      const updatedScene = sceneManager.getCurrentScene();
+      if (updatedScene) {
+        setCurrentScene({ ...updatedScene });
+        setSelectedObjectId(null);
       }
     }
   };
@@ -404,6 +627,13 @@ export default function ScenesPage() {
             className={`${styles.hierarchyRow} ${isSelected ? styles.selected : ''}`}
             style={{ paddingLeft: `${level * 20 + 8}px` }}
             onClick={() => setSelectedObjectId(objectId)}
+            draggable
+            onDragStart={(event) => {
+              event.dataTransfer.setData('application/x-scene-object', objectId);
+              event.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => handleDropObject(event, objectId)}
           >
             <button
               className={styles.expandButton}
@@ -427,7 +657,7 @@ export default function ScenesPage() {
                 e.stopPropagation();
                 handlePropertyChange(objectId, { name: e.target.value });
               }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={() => setSelectedObjectId(objectId)}
             />
 
             <div className={styles.objectActions}>
@@ -440,17 +670,6 @@ export default function ScenesPage() {
                 title={object.visible ? 'Скрыть' : 'Показать'}
               >
                 {object.visible ? '👁' : '👁‍🗨'}
-              </button>
-
-              <button
-                className={styles.lockButton}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleLock(objectId);
-                }}
-                title={object.locked ? 'Разблокировать' : 'Заблокировать'}
-              >
-                {object.locked ? '🔒' : '🔓'}
               </button>
 
               <button
@@ -480,7 +699,7 @@ export default function ScenesPage() {
   const renderInspector = () => {
     if (!selectedObjectId || !currentScene) {
       return (
-        <div className={styles.inspectorEmpty}>
+        <div className={styles.inspectorFolder}>
           <p>Выберите объект для редактирования</p>
         </div>
       );
@@ -508,93 +727,27 @@ export default function ScenesPage() {
           <div className={styles.transformRow}>
             <label>Position</label>
             <div className={styles.vectorInput}>
-              <input
-                type="number"
-                value={object.transform.position[0]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  position: [parseFloat(e.target.value) || 0, object.transform.position[1], object.transform.position[2]]
-                })}
-                step={snapEnabled ? snapValue : 0.1}
-              />
-              <input
-                type="number"
-                value={object.transform.position[1]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  position: [object.transform.position[0], parseFloat(e.target.value) || 0, object.transform.position[2]]
-                })}
-                step={snapEnabled ? snapValue : 0.1}
-              />
-              <input
-                type="number"
-                value={object.transform.position[2]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  position: [object.transform.position[0], object.transform.position[1], parseFloat(e.target.value) || 0]
-                })}
-                step={snapEnabled ? snapValue : 0.1}
-              />
+              <NumericInput value={object.transform.position[0]} step={snapEnabled ? snapValue : 0.1} onCommit={(value) => handleTransformChange(selectedObjectId, { position: [value, object.transform.position[1], object.transform.position[2]] })} />
+              <NumericInput value={object.transform.position[1]} step={snapEnabled ? snapValue : 0.1} onCommit={(value) => handleTransformChange(selectedObjectId, { position: [object.transform.position[0], value, object.transform.position[2]] })} />
+              <NumericInput value={object.transform.position[2]} step={snapEnabled ? snapValue : 0.1} onCommit={(value) => handleTransformChange(selectedObjectId, { position: [object.transform.position[0], object.transform.position[1], value] })} />
             </div>
           </div>
 
           <div className={styles.transformRow}>
             <label>Rotation</label>
             <div className={styles.vectorInput}>
-              <input
-                type="number"
-                value={object.transform.rotation[0]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  rotation: [parseFloat(e.target.value) || 0, object.transform.rotation[1], object.transform.rotation[2]]
-                })}
-                step={snapEnabled ? snapValue * 15 : 1}
-              />
-              <input
-                type="number"
-                value={object.transform.rotation[1]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  rotation: [object.transform.rotation[0], parseFloat(e.target.value) || 0, object.transform.rotation[2]]
-                })}
-                step={snapEnabled ? snapValue * 15 : 1}
-              />
-              <input
-                type="number"
-                value={object.transform.rotation[2]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  rotation: [object.transform.rotation[0], object.transform.rotation[1], parseFloat(e.target.value) || 0]
-                })}
-                step={snapEnabled ? snapValue * 15 : 1}
-              />
+              <NumericInput value={object.transform.rotation[0]} step={snapEnabled ? snapValue * 15 : 1} onCommit={(value) => handleTransformChange(selectedObjectId, { rotation: [value, object.transform.rotation[1], object.transform.rotation[2]] })} />
+              <NumericInput value={object.transform.rotation[1]} step={snapEnabled ? snapValue * 15 : 1} onCommit={(value) => handleTransformChange(selectedObjectId, { rotation: [object.transform.rotation[0], value, object.transform.rotation[2]] })} />
+              <NumericInput value={object.transform.rotation[2]} step={snapEnabled ? snapValue * 15 : 1} onCommit={(value) => handleTransformChange(selectedObjectId, { rotation: [object.transform.rotation[0], object.transform.rotation[1], value] })} />
             </div>
           </div>
 
           <div className={styles.transformRow}>
             <label>Scale</label>
             <div className={styles.vectorInput}>
-              <input
-                type="number"
-                value={object.transform.scale[0]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  scale: [parseFloat(e.target.value) || 1, object.transform.scale[1], object.transform.scale[2]]
-                })}
-                step={0.1}
-                min={0.01}
-              />
-              <input
-                type="number"
-                value={object.transform.scale[1]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  scale: [object.transform.scale[0], parseFloat(e.target.value) || 1, object.transform.scale[2]]
-                })}
-                step={0.1}
-                min={0.01}
-              />
-              <input
-                type="number"
-                value={object.transform.scale[2]}
-                onChange={(e) => handleTransformChange(selectedObjectId, {
-                  scale: [object.transform.scale[0], object.transform.scale[1], parseFloat(e.target.value) || 1]
-                })}
-                step={0.1}
-                min={0.01}
-              />
+              <NumericInput value={object.transform.scale[0]} step={0.1} min={0.01} onCommit={(value) => handleTransformChange(selectedObjectId, { scale: [value, object.transform.scale[1], object.transform.scale[2]] })} />
+              <NumericInput value={object.transform.scale[1]} step={0.1} min={0.01} onCommit={(value) => handleTransformChange(selectedObjectId, { scale: [object.transform.scale[0], value, object.transform.scale[2]] })} />
+              <NumericInput value={object.transform.scale[2]} step={0.1} min={0.01} onCommit={(value) => handleTransformChange(selectedObjectId, { scale: [object.transform.scale[0], object.transform.scale[1], value] })} />
             </div>
           </div>
         </div>
@@ -723,6 +876,64 @@ export default function ScenesPage() {
                 </div>
               </>
             )}
+
+            {(object as any).primitiveType === 'torus' && (
+              <>
+                <div className={styles.propertyRow}>
+                  <label>Radius</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.radius || 0.5}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, radius: parseFloat(e.target.value) || 0.5 }
+                    })}
+                    step={0.1}
+                    min={0.1}
+                  />
+                </div>
+                <div className={styles.propertyRow}>
+                  <label>Tube Radius</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.tubeRadius || 0.1}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, tubeRadius: parseFloat(e.target.value) || 0.1 }
+                    })}
+                    step={0.05}
+                    min={0.01}
+                  />
+                </div>
+              </>
+            )}
+
+            {(object as any).primitiveType === 'cone' && (
+              <>
+                <div className={styles.propertyRow}>
+                  <label>Radius</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.radius || 0.5}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, radius: parseFloat(e.target.value) || 0.5 }
+                    })}
+                    step={0.1}
+                    min={0.1}
+                  />
+                </div>
+                <div className={styles.propertyRow}>
+                  <label>Height</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.height || 1}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, height: parseFloat(e.target.value) || 1 }
+                    })}
+                    step={0.1}
+                    min={0.1}
+                  />
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -734,7 +945,31 @@ export default function ScenesPage() {
               <label>Type</label>
               <select
                 value={(object as any).lightType}
-                onChange={(e) => handlePropertyChange(selectedObjectId, { lightType: e.target.value as LightType | undefined })}
+                onChange={(e) => {
+                  const lightType = e.target.value as LightType;
+                  const newParams: Record<string, any> = {
+                    color: (object as any).params?.color || '#ffffff',
+                    intensity: (object as any).params?.intensity || 1,
+                    castShadow: (object as any).params?.castShadow || false,
+                  };
+                  
+                  if (lightType === 'point') {
+                    newParams.distance = 10;
+                    newParams.decay = 2;
+                  } else if (lightType === 'directional') {
+                    newParams.shadowMapSize = 1024;
+                  } else if (lightType === 'spot') {
+                    newParams.distance = 20;
+                    newParams.decay = 2;
+                    newParams.angle = 0.5;
+                    newParams.penumbra = 0.3;
+                  }
+                  
+                  handlePropertyChange(selectedObjectId, {
+                    lightType,
+                    params: newParams,
+                  } as Partial<AnySceneObject>);
+                }}
               >
                 <option value="ambient">Ambient</option>
                 <option value="directional">Directional</option>
@@ -766,41 +1001,138 @@ export default function ScenesPage() {
                 min={0}
               />
             </div>
+
+            {((object as any).lightType === 'point' || (object as any).lightType === 'spot') && (
+              <>
+                <div className={styles.propertyRow}>
+                  <label>Distance</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.distance || 10}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, distance: parseFloat(e.target.value) || 0 }
+                    })}
+                    step={1}
+                    min={0}
+                  />
+                </div>
+                <div className={styles.propertyRow}>
+                  <label>Decay</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.decay || 2}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, decay: parseFloat(e.target.value) || 0 }
+                    })}
+                    step={0.1}
+                    min={0}
+                  />
+                </div>
+              </>
+            )}
+
+            {(object as any).lightType === 'spot' && (
+              <>
+                <div className={styles.propertyRow}>
+                  <label>Angle</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.angle || 0.5}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, angle: parseFloat(e.target.value) || 0.5 }
+                    })}
+                    step={0.1}
+                    min={0.1}
+                    max={Math.PI / 2}
+                  />
+                </div>
+                <div className={styles.propertyRow}>
+                  <label>Penumbra</label>
+                  <input
+                    type="number"
+                    value={(object as any).params?.penumbra || 0.3}
+                    onChange={(e) => handlePropertyChange(selectedObjectId, {
+                      params: { ...(object as any).params, penumbra: parseFloat(e.target.value) || 0 }
+                    })}
+                    step={0.1}
+                    min={0}
+                    max={1}
+                  />
+                </div>
+              </>
+            )}
+
+            {(object as any).lightType === 'directional' && (
+              <div className={styles.propertyRow}>
+                <label>Shadow Map Size</label>
+                <select
+                  value={(object as any).params?.shadowMapSize || 1024}
+                  onChange={(e) => handlePropertyChange(selectedObjectId, {
+                    params: { ...(object as any).params, shadowMapSize: parseInt(e.target.value) }
+                  })}
+                >
+                  <option value="512">512</option>
+                  <option value="1024">1024</option>
+                  <option value="2048">2048</option>
+                  <option value="4096">4096</option>
+                </select>
+              </div>
+            )}
+
+            <div className={styles.propertyRow}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={(object as any).params?.castShadow || false}
+                  onChange={(e) => handlePropertyChange(selectedObjectId, {
+                    params: { ...(object as any).params, castShadow: e.target.checked }
+                  })}
+                />
+                Cast Shadow
+              </label>
+            </div>
           </div>
         )}
 
-        <div className={styles.inspectorSection}>
-          <h4>Components</h4>
+        {object.type === 'model' && (
+          <div className={styles.inspectorSection}>
+            <h4>Model</h4>
+            <div className={styles.propertyRow}>
+              <label>Asset</label>
+              <select
+                value={(object as any).modelId || ''}
+                onChange={(event) => {
+                  const model = models.find(item => item.id === event.target.value);
+                  if (model) {
+                    handlePropertyChange(selectedObjectId, {
+                      modelId: model.id,
+                      modelUrl: model.url,
+                      name: model.name,
+                    } as Partial<AnySceneObject>);
+                  }
+                }}
+              >
+                <option value="">Выберите модель</option>
+                {models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
 
-          <button
-            className={styles.addComponentButton}
-            onClick={() => {
-              // TODO: Открыть диалог добавления компонента
-              console.log('Add component to', selectedObjectId);
-            }}
-          >
-            + Add Component
-          </button>
-
-          {object.components && object.components.length > 0 ? (
-            object.components.map(component => (
-              <div key={component.id} className={styles.componentItem}>
-                <span>{component.scriptName}</span>
-                <button
-                  className={styles.removeComponentButton}
-                  onClick={() => {
-                    // TODO: Удалить компонент
-                    console.log('Remove component', component.id);
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            ))
-          ) : (
-            <p className={styles.noComponents}>Нет компонентов</p>
-          )}
-        </div>
+        {(object.type === 'primitive' || object.type === 'model') && (
+          <div className={styles.inspectorSection}>
+            <h4>Material</h4>
+            <select
+              value={(object as any).materialId || ''}
+              onChange={(event) => assignMaterial(selectedObjectId, event.target.value)}
+            >
+              <option value="">Материал по умолчанию</option>
+              {materials.map(material => (
+                <option key={material.id} value={material.id}>{material.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     );
   };
@@ -848,7 +1180,7 @@ export default function ScenesPage() {
           {loading ? (
             <div className={styles.loading}>Загрузка сцен...</div>
           ) : scenes.length === 0 ? (
-            <div className={styles.empty}>
+            <div className={styles.folder}>
               <p>Нет сцен. Создайте первую сцену.</p>
             </div>
           ) : (
@@ -896,7 +1228,8 @@ export default function ScenesPage() {
           >
             {saving ? 'Сохранение...' : 'Сохранить'}
           </button>
-          <button onClick={handleUndo}>↩️ Отменить</button>
+          <button onClick={handleUndo} title="Ctrl+Z">↩️ Отменить</button>
+          <button onClick={handleRedo} title="Ctrl+Y">↪️ Повторить</button>
         </div>
 
         <div className={styles.toolbarCenter}>
@@ -904,18 +1237,21 @@ export default function ScenesPage() {
             <button
               className={`${styles.gizmoButton} ${gizmoMode === 'translate' ? styles.active : ''}`}
               onClick={() => setGizmoMode('translate')}
+              title="G"
             >
               ↔️
             </button>
             <button
               className={`${styles.gizmoButton} ${gizmoMode === 'rotate' ? styles.active : ''}`}
               onClick={() => setGizmoMode('rotate')}
+              title="R"
             >
               🔄
             </button>
             <button
               className={`${styles.gizmoButton} ${gizmoMode === 'scale' ? styles.active : ''}`}
               onClick={() => setGizmoMode('scale')}
+              title="S"
             >
               📐
             </button>
@@ -967,8 +1303,15 @@ export default function ScenesPage() {
             <h3>Иерархия</h3>
             <div className={styles.addButtons}>
               <button
-                onClick={() => handleAddObject('empty')}
-                title="Добавить Empty"
+                onClick={() => handleAddObject('model')}
+                title="Добавить модель"
+                disabled={models.length === 0}
+              >
+                🌳
+              </button>
+              <button
+                onClick={() => handleAddObject('folder')}
+                title="Добавить папку"
               >
                 📁
               </button>
@@ -987,9 +1330,13 @@ export default function ScenesPage() {
             </div>
           </div>
 
-          <div className={styles.hierarchy}>
+          <div
+            className={styles.hierarchy}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => handleDropObject(event)}
+          >
             {currentScene.rootObjects.length === 0 ? (
-              <div className={styles.emptyHierarchy}>
+              <div className={styles.folderHierarchy}>
                 <p>Сцена пуста</p>
                 <p>Добавьте объекты через кнопки выше</p>
               </div>
@@ -1009,6 +1356,7 @@ export default function ScenesPage() {
             snapEnabled={snapEnabled}
             snapValue={snapValue}
             viewMode={viewMode}
+            viewPreset={viewPreset}
           />
 
           <div className={styles.viewportOverlay}>
@@ -1018,10 +1366,10 @@ export default function ScenesPage() {
             </div>
 
             <div className={styles.viewportControls}>
-              <button title="Вид спереди">⬆️</button>
-              <button title="Вид сбоку">⬅️</button>
-              <button title="Вид сверху">🔽</button>
-              <button title="Сбросить камеру">🎯</button>
+              <button title="Вид спереди" onClick={() => setViewPreset('front')}>⬆️</button>
+              <button title="Вид сбоку" onClick={() => setViewPreset('side')}>⬅️</button>
+              <button title="Вид сверху" onClick={() => setViewPreset('top')}>🔽</button>
+              <button title="Показать все объекты" onClick={() => setViewPreset('frame')}>🎯</button>
             </div>
           </div>
         </div>

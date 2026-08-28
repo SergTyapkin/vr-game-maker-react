@@ -46,7 +46,7 @@ export class VREditorManager extends EventEmitter {
     addObjectType: null,
     addObjectSubType: null,
     transformMode: 'translate',
-    snapEnabled: true,
+    snapEnabled: false,
     snapValue: 0.25,
     isMenuOpen: true,
     activeMenu: 'main',
@@ -329,8 +329,6 @@ export class VREditorManager extends EventEmitter {
     } else if (mode === 'rotate' && snapped.rotation) {
       const angleSnap = snap * 15; // 15 градусов
       snapped.rotation = snapped.rotation.map(v => Math.round(v / angleSnap) * angleSnap) as [number, number, number];
-    } else if (mode === 'scale' && snapped.scale) {
-      snapped.scale = snapped.scale.map(v => Math.round(v / snap) * snap) as [number, number, number];
     }
 
     return snapped;
@@ -356,6 +354,7 @@ export class VREditorManager extends EventEmitter {
     if (!object) return null;
 
     const duplicated = JSON.parse(JSON.stringify(object));
+    delete duplicated.id;
     duplicated.name = `${object.name}_copy`;
     duplicated.transform.position[0] += 1;
 

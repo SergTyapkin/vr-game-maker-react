@@ -1,8 +1,8 @@
-// components/editor/SceneViewport.tsx (альтернативная версия)
+// components/editor/SceneViewport.tsx
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
+import { Canvas, useThree, ThreeEvent, useFrame } from '@react-three/fiber';
 import {
   OrbitControls,
   GizmoHelper,
@@ -22,6 +22,7 @@ interface SceneViewportProps {
   snapEnabled: boolean;
   snapValue: number;
   viewMode: 'editor' | 'preview';
+  viewPreset?: 'perspective' | 'front' | 'side' | 'top' | 'frame';
 }
 
 function SceneContent(props: SceneViewportProps) {
@@ -33,14 +34,17 @@ function SceneContent(props: SceneViewportProps) {
     snapEnabled,
     snapValue,
     viewMode,
+    viewPreset,
   } = props;
 
   const { scene, camera, gl } = useThree();
   const controlsRef = useRef<any>(null);
   const transformControlsRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
+  const [selectedObject, setSelectedObject] = useState<THREE.Object3D | null>(null);
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
+  const isDraggingRef = useRef(false);
 
   // Инициализация сцены
   useEffect(() => {
@@ -51,6 +55,9 @@ function SceneContent(props: SceneViewportProps) {
       const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
       directionalLight.position.set(5, 10, 7);
       directionalLight.castShadow = true;
+      
+      ambientLight.userData.isDefault = true;
+      directionalLight.userData.isDefault = true;
 
       scene.add(ambientLight);
       scene.add(directionalLight);
@@ -59,55 +66,32 @@ function SceneContent(props: SceneViewportProps) {
     }
   }, [scene, sceneManager, ready]);
 
-  // Обновление TransformControls
+  // Обновление выбранного объекта
   useEffect(() => {
-    if (!transformControlsRef.current || !selectedObjectId || viewMode === 'preview') return;
-
-    const threeObject = sceneManager.getThreeObjectById(selectedObjectId);
-    if (threeObject) {
-      transformControlsRef.current.attach(threeObject);
+    if (selectedObjectId) {
+      const obj = sceneManager.getThreeObjectById(selectedObjectId);
+      setSelectedObject(obj || null);
+    } else {
+      setSelectedObject(null);
     }
-  }, [selectedObjectId, sceneManager, viewMode]);
+  }, [selectedObjectId, sceneManager]);
 
-  // Обработчик клика с использованием Raycaster
-  const handleCanvasClick = useCallback((event: ThreeEvent<MouseEvent>) => {
-    if (viewMode === 'preview') return;
-
-    // Получаем координаты мыши
-    const rect = gl.domElement.getBoundingClientRect();
-    mouse.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.current.setFromCamera(mouse.current, camera);
-
-    // Собираем все объекты с sceneId
-    const objects: THREE.Object3D[] = [];
-    scene.traverse((obj) => {
-      if (obj.userData.sceneId) {
-        objects.push(obj);
-      }
-    });
-
-    const intersects = raycaster.current.intersectObjects(objects, true);
-
-    if (intersects.length > 0) {
-      // Находим первый объект с sceneId
-      for (const intersect of intersects) {
-        let target = intersect.object;
-        while (target && !target.userData.sceneId) {
-          target = target.parent as THREE.Object3D;
-        }
-        if (target?.userData.sceneId) {
-          onObjectSelect(target.userData.sceneId);
-          return;
-        }
+  // Прикрепляем TransformControls к выбранному объекту
+  useEffect(() => {
+    if (transformControlsRef.current && viewMode === 'editor') {
+      if (selectedObject && selectedObject.parent !== null) {
+        // Обновляем мировую матрицу для правильной позиции гизмо
+        selectedObject.updateWorldMatrix(true, true);
+        transformControlsRef.current.attach(selectedObject);
+        transformControlsRef.current.updateMatrixWorld();
+      } else {
+        // Открепляем, но не скрываем (TransformControls сам скроется)
+        transformControlsRef.current.detach();
       }
     }
+  }, [selectedObject, viewMode, transformControlsRef]);
 
-    // Клик мимо объектов - сбрасываем выделение
-    onObjectSelect(null);
-  }, [viewMode, gl, camera, scene, onObjectSelect]);
-
+  // Обработка изменений из TransformControls
   const handleTransformChange = useCallback(() => {
     if (!transformControlsRef.current || !selectedObjectId) return;
 
@@ -121,19 +105,106 @@ function SceneContent(props: SceneViewportProps) {
     });
   }, [selectedObjectId, sceneManager]);
 
-  useFrame((state, delta) => {
+  // Обработчики перетаскивания
+  const handleMouseDown = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    // Отложенный сброс, чтобы клик после перетаскивания не сработал
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 0);
+  }, []);
+
+  // Обработчик клика с использованием Raycaster
+  const handleCanvasClick = useCallback((event: ThreeEvent<MouseEvent>) => {
+    if (viewMode === 'preview') return;
+
+    // Игнорируем клики при перетаскивании гизмо
+    if (isDraggingRef.current) return;
+
+    const rect = gl.domElement.getBoundingClientRect();
+    mouse.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.current.setFromCamera(mouse.current, camera);
+
+    const objects: THREE.Object3D[] = [];
     scene.traverse((obj) => {
-      if (obj.userData.mixer) {
-        obj.userData.mixer.update(delta);
-      }
+      if (obj.userData.isPickProxy) objects.push(obj);
     });
+
+    const intersects = raycaster.current.intersectObjects(objects, false);
+
+    if (intersects.length > 0) {
+      const sceneId = intersects[0].object.userData.sceneId;
+      onObjectSelect(sceneId);
+      return;
+    }
+    onObjectSelect(null);
+  }, [viewMode, gl, camera, scene, onObjectSelect]);
+
+  // Обработка изменения предустановленного вида
+  useEffect(() => {
+    if (!camera || viewPreset === 'perspective') return;
+    
+    const distance = 10;
+    const target = new THREE.Vector3(0, 0, 0);
+    
+    switch (viewPreset) {
+      case 'front':
+        camera.position.set(0, 0, distance);
+        break;
+      case 'side':
+        camera.position.set(distance, 0, 0);
+        break;
+      case 'top':
+        camera.position.set(0, distance, 0);
+        break;
+      case 'frame':
+        const box = new THREE.Box3();
+        scene.traverse((obj) => {
+          if (obj.userData.sceneId) {
+            box.expandByObject(obj);
+          }
+        });
+        if (!box.isEmpty()) {
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const fov = camera.fov * Math.PI / 180;
+          const distance = maxDim / (2 * Math.tan(fov / 2));
+          camera.position.copy(center).add(new THREE.Vector3(0, 0, distance));
+          target.copy(center);
+        }
+        break;
+    }
+    
+    camera.lookAt(target);
+    controlsRef.current?.update();
+  }, [viewPreset, camera, scene]);
+
+  useFrame(() => {
+    if (transformControlsRef.current && selectedObject) {
+      // Проверяем, что объект все еще в сцене
+      if (selectedObject.parent === null) {
+        // Объект был удален из сцены, отключаем гизмо
+        transformControlsRef.current.detach();
+        setSelectedObject(null);
+        return;
+      }
+      
+      transformControlsRef.current.updateMatrixWorld();
+    }
   });
 
   return (
-    <>
+    <group userData={{isDefault: true}} onClick={handleCanvasClick}>
       <PerspectiveCamera makeDefault position={[5, 5, 10]} />
 
       <OrbitControls
+        userData={{isDefault: true}}
         ref={controlsRef}
         makeDefault
         enablePan={viewMode === 'editor'}
@@ -142,19 +213,29 @@ function SceneContent(props: SceneViewportProps) {
         enabled={!selectedObjectId || viewMode === 'preview'}
       />
 
-      {selectedObjectId && viewMode === 'editor' && (
-        <TransformControls
-          ref={transformControlsRef}
-          mode={gizmoMode}
-          translationSnap={snapEnabled && gizmoMode === 'translate' ? snapValue : null}
-          rotationSnap={snapEnabled && gizmoMode === 'rotate' ? snapValue * 15 * Math.PI / 180 : null}
-          scaleSnap={snapEnabled && gizmoMode === 'scale' ? snapValue : null}
-          onObjectChange={handleTransformChange}
-          space="world"
-        />
-      )}
+      {/* Гизмо всегда присутствует, но скрыт если нет выбранного объекта */}
+      <TransformControls
+        userData={{isDefault: true}}
+        ref={transformControlsRef}
+        mode={gizmoMode}
+        translationSnap={snapEnabled && gizmoMode === 'translate' ? snapValue : null}
+        rotationSnap={snapEnabled && gizmoMode === 'rotate' ? snapValue * 15 * Math.PI / 180 : null}
+        scaleSnap={snapEnabled && gizmoMode === 'scale' ? snapValue : null}
+        onObjectChange={handleTransformChange}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        space="world"
+        size={0.7}
+        enabled={Boolean(selectedObject) && viewMode === 'editor'}
+      />
+
+      <mesh userData={{isDefault: true}} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+        <planeGeometry args={[30, 30]} />
+        <meshStandardMaterial color="#252936" roughness={0.92} metalness={0} transparent opacity={0.5}/>
+      </mesh>
 
       <Grid
+        userData={{isDefault: true}}
         position={[0, 0, 0]}
         args={[30, 30]}
         cellSize={1}
@@ -168,23 +249,17 @@ function SceneContent(props: SceneViewportProps) {
         followCamera={false}
       />
 
-      <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+      <GizmoHelper userData={{isDefault: true}} alignment="bottom-right" margin={[80, 80]}>
         <GizmoViewport axisColors={['red', 'green', 'blue']} labelColor="black" />
       </GizmoHelper>
 
-      <axesHelper args={[5]} />
-    </>
+      <axesHelper userData={{isDefault: true}} args={[5]} />
+    </group>
   );
 }
 
 export default function SceneViewport(props: SceneViewportProps) {
-  const { viewMode } = props;
-
-  const handlePointerMissed = useCallback(() => {
-    if (viewMode === 'editor') {
-      props.onObjectSelect(null);
-    }
-  }, [viewMode, props.onObjectSelect]);
+  const { viewMode, onObjectSelect } = props;
 
   return (
     <Canvas
@@ -196,7 +271,11 @@ export default function SceneViewport(props: SceneViewportProps) {
         preserveDrawingBuffer: true,
       }}
       style={{ background: '#1a1a2e' }}
-      onPointerMissed={handlePointerMissed}
+      onPointerMissed={() => {
+        if (viewMode === 'editor') {
+          onObjectSelect(null);
+        }
+      }}
     >
       <SceneContent {...props} />
     </Canvas>

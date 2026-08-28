@@ -155,8 +155,6 @@
     position: relative;
     background: var(--bg-secondary);
     border: 1px solid var(--border-light);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
     cursor: pointer;
     transition: all var(--transition-base);
 }
@@ -175,6 +173,7 @@
     position: relative;
     aspect-ratio: 1;
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border-radius: var(--radius-lg);
 }
 
 .previewPlaceholder {
