@@ -178,7 +178,9 @@ export default function ModelsPage() {
         <div>
           <h1 className={styles.title}>3D Модели</h1>
           <p className={styles.subtitle}>
-            Загружайте и управляйте 3D моделями в форматах GLTF, GLB, FBX, OBJ
+            Загружайте и управляйте 3D моделями в форматах GLTF, GLB, FBX, OBJ. 
+            <br/>
+            Максимальный размер модели: 100Мб
           </p>
         </div>
         <div className={styles.headerActions}>
